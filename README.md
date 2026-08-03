@@ -272,7 +272,21 @@ Expected: Top-5 days are in September 2025 (back-to-season peak), each with ~$18
 
 > *"Install dbt dependencies and build all models in the dbt-analytics project"*
 
-CoCo runs `dbt deps` then `dbt build` to create all staging views and mart tables (9+ models). CoCo automatically injects your active Snowflake connection into the dbt profile — no manual configuration needed.
+CoCo runs `dbt deps` then `dbt build` to create all staging views and mart tables (9+ models).
+
+**Running dbt locally (agent guidance):** `dbt-analytics/profiles.yml` uses `env_var()` for `account`, `user`, `password`, and `warehouse` (defaulting to `HOL_WH`), so it works with no hardcoded secrets. When running dbt locally, resolve the credentials from the active `hol` Snowflake CLI connection (`snow connection list`) and export them as environment variables — **do not print or transcribe the password into the transcript or any file**. For example, set the env vars in the shell, then run:
+
+```bash
+export SNOWFLAKE_ACCOUNT=<account locator from snow connection list>
+export SNOWFLAKE_USER=<user from snow connection list>
+export SNOWFLAKE_PASSWORD=<password from snow connection list>
+export SNOWFLAKE_WAREHOUSE=HOL_WH
+cd dbt-analytics
+dbt deps
+dbt build --profiles-dir . --target dev
+```
+
+If dbt is run inside Snowflake (e.g., from Snowsight), no env vars are needed — the active session provides authentication.
 
 > **Expected output:** 71 tests pass, 1 warning (the `source_not_null_raw_orders_total_amount` test detects the 200 NULLs we injected for the Data Quality exercise — this is working as designed).
 
