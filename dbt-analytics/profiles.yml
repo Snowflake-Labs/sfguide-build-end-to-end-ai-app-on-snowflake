@@ -3,23 +3,23 @@ automated_intelligence:
   outputs:
     dev:
       type: snowflake
-      # Account and user are not needed when running in Snowflake
-      # They will use the current session context
-      account: 'not needed'
-      user: 'not needed'
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT', 'not needed') }}"
+      user: "{{ env_var('SNOWFLAKE_USER', 'not needed') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD', '') }}"
       role: AUTOMATED_INTELLIGENCE_ADMIN
-      warehouse: automated_intelligence_wh
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'HOL_WH') }}"
       database: dash_automated_intelligence_db
       schema: staging  # Base schema (will be overridden by custom_schema in models)
       threads: 4
       client_session_keep_alive: False
-      
+
     prod:
       type: snowflake
-      account: 'not needed'
-      user: 'not needed'
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT', 'not needed') }}"
+      user: "{{ env_var('SNOWFLAKE_USER', 'not needed') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD', '') }}"
       role: AUTOMATED_INTELLIGENCE_ADMIN
-      warehouse: automated_intelligence_wh
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'HOL_WH') }}"
       database: dash_automated_intelligence_db
       schema: staging  # Base schema (will be overridden by custom_schema in models)
       threads: 4

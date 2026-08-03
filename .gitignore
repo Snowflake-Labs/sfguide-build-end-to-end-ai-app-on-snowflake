@@ -458,9 +458,6 @@ talk/codebase-summary.md
 # dbt local user config
 dbt-analytics/.user.yml
 
-# dbt connection profile (contains account/user/password — never commit)
-dbt-analytics/profiles.yml
-
 # Streamlit deploy output (symlinks)
 streamlit-dashboard/output/
 .context/
