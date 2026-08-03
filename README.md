@@ -568,9 +568,9 @@ CoCo creates the table with `CATALOG='SNOWFLAKE'` (no external volume needed) an
 
 ### Explore V3: Deletion Vectors
 
-> *"Create an Iceberg V3 table from RAW.ORDERS (ICEBERG_VERSION=3) with merge-on-read enabled, insert 1000 rows, then update 10 of them to demonstrate deletion vectors"*
+> *"Create an Iceberg V3 table and load enough data from RAW.ORDERS to demonstrate deletion vectors, then update a few rows and show that Snowflake used a deletion vector instead of rewriting the file."*
 
-CoCo creates a V3 table with `ENABLE_ICEBERG_MERGE_ON_READ = TRUE`, inserts data, then runs an UPDATE that uses deletion vectors instead of full file rewrites.
+CoCo creates a V3 Snowflake-managed Iceberg table (merge-on-read is the default for V3 managed tables), loads enough rows to exceed the data-file threshold below which deletion vectors are suppressed, then UPDATEs a small fraction of rows so Snowflake writes a deletion vector rather than rewriting the file.
 
 ### Explore V3: Default Values
 
