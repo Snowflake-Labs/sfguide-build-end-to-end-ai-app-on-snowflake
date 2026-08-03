@@ -612,11 +612,11 @@ pip install -r requirements.txt
 cp profile.json.template profile.json
 ```
 
-Edit `profile.json` and set your `account`, `user`, `private_key` (contents of rsa_key.p8), and `role`.
+Edit `profile.json` and set your `account`, `user`, `private_key_file` (path to rsa_key.p8), and `role`.
 
 ```bash
-# Stream 10,000 orders
-python src/automated_intelligence_streaming.py 10000
+# Stream orders into staging
+python src/automated_intelligence_streaming.py 1000
 ```
 
 ### Verify Data Landed
@@ -626,7 +626,7 @@ SELECT COUNT(*) FROM dash_automated_intelligence_db.staging.orders_staging;
 SELECT COUNT(*) FROM dash_automated_intelligence_db.staging.order_items_staging;
 ```
 
-You should see 10,000 orders and ~50,000 order items in staging.
+Verify that row counts in both tables are consistent (each order should have matching order items).
 
 ### Merge into Production
 
