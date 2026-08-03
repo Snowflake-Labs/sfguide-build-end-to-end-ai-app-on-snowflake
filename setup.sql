@@ -263,6 +263,13 @@ CREATE TABLE IF NOT EXISTS order_items_staging (
 )
 COMMENT = 'Staging table for order item data from Snowpipe Streaming';
 
+-- Snowpipe Streaming grants: AUTOMATED_INTELLIGENCE_ADMIN streams into these tables
+-- and calls the merge/truncate/count procedures (all caller's rights).
+GRANT USAGE     ON SCHEMA dash_automated_intelligence_db.staging                      TO ROLE automated_intelligence_admin;
+GRANT INSERT, SELECT, DELETE, TRUNCATE ON TABLE orders_staging                        TO ROLE automated_intelligence_admin;
+GRANT INSERT, SELECT, DELETE, TRUNCATE ON TABLE order_items_staging                   TO ROLE automated_intelligence_admin;
+GRANT CREATE PIPE ON SCHEMA dash_automated_intelligence_db.staging                    TO ROLE automated_intelligence_admin;
+
 -- Snapshot table for benchmarking
 CREATE TABLE IF NOT EXISTS discount_snapshot (
     order_id VARCHAR(36),
@@ -1469,6 +1476,9 @@ GRANT USAGE ON SCHEMA dash_automated_intelligence_db.raw TO ROLE automated_intel
 GRANT USAGE ON SCHEMA dash_automated_intelligence_db.dynamic_tables TO ROLE automated_intelligence_admin;
 GRANT USAGE ON SCHEMA dash_automated_intelligence_db.interactive TO ROLE automated_intelligence_admin;
 GRANT SELECT ON ALL TABLES IN SCHEMA dash_automated_intelligence_db.raw TO ROLE automated_intelligence_admin;
+-- INSERT + UPDATE needed for merge_staging_to_raw (caller's rights proc merges streaming data into raw)
+GRANT INSERT, UPDATE ON TABLE dash_automated_intelligence_db.raw.orders       TO ROLE automated_intelligence_admin;
+GRANT INSERT, UPDATE ON TABLE dash_automated_intelligence_db.raw.order_items  TO ROLE automated_intelligence_admin;
 GRANT SELECT ON ALL DYNAMIC TABLES IN SCHEMA dash_automated_intelligence_db.dynamic_tables TO ROLE automated_intelligence_admin;
 GRANT SELECT ON ALL TABLES IN SCHEMA dash_automated_intelligence_db.interactive TO ROLE automated_intelligence_admin;
 
