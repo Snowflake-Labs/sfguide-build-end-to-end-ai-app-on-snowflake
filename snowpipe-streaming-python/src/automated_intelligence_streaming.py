@@ -175,6 +175,18 @@ def main():
                 "Channel flush timed out after 120s. "
                 "Reconciliation may report false orphans."
             )
+
+        # wait_for_flush confirms the SDK-side buffer is drained, but Snowflake's
+        # server-side commit can take up to max.client.lag seconds after that.
+        # Running reconciliation before the server commit completes would delete
+        # valid records as false orphans (orders with no items yet, or vice versa).
+        server_lag = config.get_int_property("max.client.lag", 60)
+        post_flush_wait = server_lag + 10
+        logger.info(
+            f"Waiting {post_flush_wait}s for server-side commit "
+            f"(max.client.lag={server_lag}s + 10s buffer)..."
+        )
+        time.sleep(post_flush_wait)
         
         # Run reconciliation to clean up any orphaned records
         logger.info("\n" + "="*60)
