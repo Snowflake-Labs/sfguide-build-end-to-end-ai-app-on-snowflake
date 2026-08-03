@@ -53,17 +53,18 @@ pip install -r requirements.txt
 
 **SDK Version:** 1.1.2+ (Jan 2026) - includes Azure/GCP GA support and bug fixes.
 
-### 2. Create Snowflake PIPE Objects
+### 2. Grant Streaming Privileges
 
-Run the following SQL in Snowflake using the `AUTOMATED_INTELLIGENCE_ADMIN` role:
+The `ORDERS-STREAMING` and `ORDER_ITEMS-STREAMING` pipes are auto-created by Snowflake on first connect using the reserved `<TABLE_NAME>-STREAMING` naming convention — do **not** create them manually. You only need to grant the required privileges.
+
+Run the following SQL as `ACCOUNTADMIN`:
 
 ```sql
-USE ROLE AUTOMATED_INTELLIGENCE_ADMIN;
-USE DATABASE DASH_AUTOMATED_INTELLIGENCE_DB;
-USE SCHEMA RAW;
+USE ROLE ACCOUNTADMIN;
 
-CREATE OR REPLACE PIPE ORDERS_PIPE AS COPY INTO ORDERS;
-CREATE OR REPLACE PIPE ORDER_ITEMS_PIPE AS COPY INTO ORDER_ITEMS;
+GRANT INSERT ON TABLE DASH_AUTOMATED_INTELLIGENCE_DB.RAW.ORDERS      TO ROLE AUTOMATED_INTELLIGENCE_ADMIN;
+GRANT INSERT ON TABLE DASH_AUTOMATED_INTELLIGENCE_DB.RAW.ORDER_ITEMS TO ROLE AUTOMATED_INTELLIGENCE_ADMIN;
+GRANT CREATE PIPE ON SCHEMA DASH_AUTOMATED_INTELLIGENCE_DB.RAW        TO ROLE AUTOMATED_INTELLIGENCE_ADMIN;
 ```
 
 ### 3. Generate RSA Key Pair for Authentication
