@@ -79,12 +79,14 @@ CREATE SCHEMA IF NOT EXISTS dash_automated_intelligence_db.interactive;
 CREATE SCHEMA IF NOT EXISTS dash_automated_intelligence_db.semantic;
 CREATE SCHEMA IF NOT EXISTS dash_automated_intelligence_db.dbt_staging COMMENT = 'Schema for dbt staging models';
 CREATE SCHEMA IF NOT EXISTS dash_automated_intelligence_db.dbt_analytics COMMENT = 'Schema for dbt analytical models';
+CREATE SCHEMA IF NOT EXISTS dash_automated_intelligence_db.dbt_intermediate COMMENT = 'Schema for dbt intermediate models';
 
 -- dbt grants: AUTOMATED_INTELLIGENCE_ADMIN needs these to run dbt build
--- CREATE SCHEMA covers dbt_intermediate (created at runtime, not pre-created)
+-- (dbt_intermediate is pre-created above so the cross-role grants below resolve.)
 GRANT CREATE SCHEMA ON DATABASE dash_automated_intelligence_db TO ROLE automated_intelligence_admin;
 GRANT USAGE, CREATE VIEW, CREATE TABLE ON SCHEMA dash_automated_intelligence_db.dbt_staging TO ROLE automated_intelligence_admin;
 GRANT USAGE, CREATE VIEW, CREATE TABLE ON SCHEMA dash_automated_intelligence_db.dbt_analytics TO ROLE automated_intelligence_admin;
+GRANT USAGE, CREATE VIEW, CREATE TABLE ON SCHEMA dash_automated_intelligence_db.dbt_intermediate TO ROLE automated_intelligence_admin;
 
 -- Cross-role FUTURE grants for dbt schemas: dbt creates its models later (run as
 -- AUTOMATED_INTELLIGENCE_ADMIN). These FUTURE grants ensure the ACCOUNTADMIN-owned
