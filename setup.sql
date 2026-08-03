@@ -935,7 +935,7 @@ ALTER TABLE product_catalog SET CHANGE_TRACKING = TRUE;
 -- Create Cortex Search Service for semantic search over product descriptions
 CREATE OR REPLACE CORTEX SEARCH SERVICE product_search_service
   ON description
-  ATTRIBUTES product_name, product_category, features, price
+  ATTRIBUTES product_id, product_name, product_category, features, price
   WAREHOUSE = hol_wh
   TARGET_LAG = '1 hour'
   AS (
