@@ -474,16 +474,17 @@ The evaluation dataset (7 questions + ground truth) was created by `setup.sql`. 
 
 1. Switch to the **ACCOUNTADMIN** role in Snowsight (top-left role selector)
 2. Navigate to **AI and ML > Agents > BUSINESS_INSIGHTS_AGENT > Evaluations** tab
-3. Click **New evaluation run**, name it (e.g. `hol-eval-run-1`), click **Next**
-4. Select **Create new dataset from table**
-5. Under **Source table**, set Database and schema to `DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC`, then select `AGENT_EVALUATION_DATA`
-6. Under **New dataset location**, keep `DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC`
-7. Set **Dataset name**: `hol_eval_dataset`
-8. Click **Next**
-9. Under **Define metrics**, confirm **Input query** = `INPUT_QUERY`
-10. Toggle on **Answer Correctness**, set **Expected answer** = `GROUND_TRUTH`
-11. Toggle on **Logical Consistency**
-12. Click **Create** — evaluation starts automatically (~3 min)
+3. Click **Use existing dataset**, then **Run an eval manually**
+4. Click **New evaluation run**, name it (e.g. `hol-eval-run-1`), click **Next**
+5. Select **Create new dataset from table**
+6. Under **Source table**, set Database and schema to `DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC`, then select `AGENT_EVALUATION_DATA`
+7. Under **New dataset location**, keep `DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC`
+8. Set **Dataset name**: `hol_eval_dataset`
+9. Click **Next**
+10. Under **Define metrics**, confirm **Input query** = `INPUT_QUERY`
+11. Toggle on **Answer Correctness**, set **Expected answer** = `GROUND_TRUTH`
+12. Toggle on **Logical Consistency**
+13. Click **Create** — evaluation starts automatically (~3 min)
 
 ### Interpret Results
 
