@@ -1,4 +1,5 @@
 import logging
+import os
 import random
 import sys
 import time
@@ -145,10 +146,11 @@ def main():
     streaming_manager = None
     
     try:
-        config_file = "config_default.properties"
-        profile_file = "profile.json"
+        _root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        config_file = os.path.join(_root, "config_default.properties")
+        profile_file = os.path.join(_root, "profile.json")
         num_orders = None
-        
+
         if len(sys.argv) > 1:
             num_orders = int(sys.argv[1])
         if len(sys.argv) > 2:
