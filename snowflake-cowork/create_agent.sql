@@ -87,7 +87,18 @@ FROM SPECIFICATION $$
       "base_table_columns": ["doc_id", "title", "content", "source_type", "category", "rating", "date_field", "customer_id"]
     },
     "search_products": {
-      "search_service": "DASH_AUTOMATED_INTELLIGENCE_DB.RAW.PRODUCT_SEARCH_SERVICE"
+      "search_service": "DASH_AUTOMATED_INTELLIGENCE_DB.RAW.PRODUCT_SEARCH_SERVICE",
+      "id_column": "PRODUCT_ID",
+      "title_column": "PRODUCT_NAME",
+      "columns_and_descriptions": {
+        "product_id": {"description": "Unique product identifier", "type": "TEXT", "searchable": false, "filterable": false},
+        "product_name": {"description": "Product name", "type": "TEXT", "searchable": true, "filterable": false},
+        "product_category": {"description": "Product category such as Skis, Boots, Accessories", "type": "TEXT", "searchable": false, "filterable": true},
+        "features": {"description": "Product features and specifications", "type": "TEXT", "searchable": true, "filterable": false},
+        "price": {"description": "Product price in USD", "type": "NUMBER", "searchable": false, "filterable": true}
+      },
+      "max_results": 100,
+      "execution_environment": {"type": "warehouse", "warehouse": "HOL_WH"}
     }
   }
 }

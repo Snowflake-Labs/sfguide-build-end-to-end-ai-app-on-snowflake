@@ -416,11 +416,19 @@ Key insight: Same query, same tables — different results based on who's asking
 
 ### Verify Through CoWork
 
-Switch to the **WEST_COAST_MANAGER** role in Snowsight, then open CoWork and ask the agent:
+Cortex Agents run with the querying user's **default role**, not the active role selected in Snowsight — so switching your role in the Snowsight UI has no effect on the agent's results. To see the Row Access Policy filter the agent, use the dedicated demo user created by `setup.sql`:
+
+First, set a login password for the demo user (setup.sql creates the user without a hardcoded password, to avoid committing a secret):
+
+```sql
+ALTER USER west_coast_manager_user SET PASSWORD = '<your-choice>';
+```
+
+Then log into Snowsight as **`west_coast_manager_user`** with the password you just set, open CoWork, and ask the agent:
 
 > *"What is our total revenue and customer count by state?"*
 
-The agent returns results for only CA, OR, and WA — the Row Access Policy filters data transparently, even through AI-generated SQL.
+The agent returns results for only CA, OR, and WA — the Row Access Policy filters data transparently, even through AI-generated SQL. (Log back in as your admin user afterward.)
 
 ---
 

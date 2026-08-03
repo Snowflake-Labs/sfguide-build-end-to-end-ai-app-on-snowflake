@@ -80,6 +80,27 @@ CREATE SCHEMA IF NOT EXISTS dash_automated_intelligence_db.semantic;
 CREATE SCHEMA IF NOT EXISTS dash_automated_intelligence_db.dbt_staging COMMENT = 'Schema for dbt staging models';
 CREATE SCHEMA IF NOT EXISTS dash_automated_intelligence_db.dbt_analytics COMMENT = 'Schema for dbt analytical models';
 
+-- dbt grants: AUTOMATED_INTELLIGENCE_ADMIN needs these to run dbt build
+-- CREATE SCHEMA covers dbt_intermediate (created at runtime, not pre-created)
+GRANT CREATE SCHEMA ON DATABASE dash_automated_intelligence_db TO ROLE automated_intelligence_admin;
+GRANT USAGE, CREATE VIEW, CREATE TABLE ON SCHEMA dash_automated_intelligence_db.dbt_staging TO ROLE automated_intelligence_admin;
+GRANT USAGE, CREATE VIEW, CREATE TABLE ON SCHEMA dash_automated_intelligence_db.dbt_analytics TO ROLE automated_intelligence_admin;
+
+-- Cross-role FUTURE grants for dbt schemas: dbt creates its models later (run as
+-- AUTOMATED_INTELLIGENCE_ADMIN). These FUTURE grants ensure the ACCOUNTADMIN-owned
+-- Streamlit dashboard can SELECT them as they are created. (ALL TABLES/ALL VIEWS
+-- grants for the existing dbt objects — none yet at this point — are applied in
+-- the post-dbt step documented in README / deploy.sh.) AUTOMATED_INTELLIGENCE_ADMIN
+-- read grants on the pipeline schemas are applied at the END of this script, once
+-- those tables exist.
+GRANT USAGE ON SCHEMA dash_automated_intelligence_db.dbt_analytics TO ROLE accountadmin;
+GRANT USAGE ON SCHEMA dash_automated_intelligence_db.dbt_staging TO ROLE accountadmin;
+GRANT USAGE ON SCHEMA dash_automated_intelligence_db.dbt_intermediate TO ROLE accountadmin;
+GRANT SELECT ON FUTURE TABLES IN SCHEMA dash_automated_intelligence_db.dbt_analytics TO ROLE accountadmin;
+GRANT SELECT ON FUTURE VIEWS  IN SCHEMA dash_automated_intelligence_db.dbt_analytics TO ROLE accountadmin;
+GRANT SELECT ON FUTURE VIEWS  IN SCHEMA dash_automated_intelligence_db.dbt_staging TO ROLE accountadmin;
+GRANT SELECT ON FUTURE VIEWS  IN SCHEMA dash_automated_intelligence_db.dbt_intermediate TO ROLE accountadmin;
+
 -- Create warehouse
 CREATE OR REPLACE WAREHOUSE hol_wh
   WITH WAREHOUSE_SIZE = 'MEDIUM'
@@ -1349,6 +1370,47 @@ GRANT USAGE ON WAREHOUSE HOL_WH TO ROLE WEST_COAST_MANAGER;
 GRANT SELECT ON ALL TABLES IN SCHEMA DASH_AUTOMATED_INTELLIGENCE_DB.RAW TO ROLE WEST_COAST_MANAGER;
 GRANT SELECT ON ALL DYNAMIC TABLES IN SCHEMA DASH_AUTOMATED_INTELLIGENCE_DB.DYNAMIC_TABLES TO ROLE WEST_COAST_MANAGER;
 
+-- Grant access to the Cortex Search services used by the Business Insights
+-- Agent's search tools. Search services are not tables, so the SELECT grants
+-- above do not cover them — USAGE must be granted separately, or the agent's
+-- search_customer_feedback and search_products tools fail with access errors
+-- when run as WEST_COAST_MANAGER.
+GRANT USAGE ON CORTEX SEARCH SERVICE DASH_AUTOMATED_INTELLIGENCE_DB.RAW.CUSTOMER_FEEDBACK_SEARCH TO ROLE WEST_COAST_MANAGER;
+GRANT USAGE ON CORTEX SEARCH SERVICE DASH_AUTOMATED_INTELLIGENCE_DB.RAW.PRODUCT_SEARCH_SERVICE TO ROLE WEST_COAST_MANAGER;
+
+-- Grant SELECT on the CUSTOMER_FEEDBACK view, which is the base_table for the
+-- multi-index search_customer_feedback tool (analytical search persists/reads
+-- from it). SELECT ON ALL TABLES above does not cover views, so grant it
+-- explicitly — without it the search tool fails when run as WEST_COAST_MANAGER.
+GRANT SELECT ON VIEW DASH_AUTOMATED_INTELLIGENCE_DB.RAW.CUSTOMER_FEEDBACK TO ROLE WEST_COAST_MANAGER;
+
+-- Grant access to the semantic view used by the Business Insights Agent's
+-- query_business_data (Cortex Analyst text-to-SQL) tool. Schema USAGE alone
+-- does not authorize the semantic view object. Semantic views use SELECT
+-- (not USAGE), and Cortex Agents require the executing role to have SELECT on
+-- BOTH the semantic view and its underlying tables. The underlying-table
+-- SELECT is already covered by the SELECT ON ALL TABLES grant above; this
+-- grants SELECT on the semantic view itself. Without it the agent's
+-- text-to-SQL tool fails with "Semantic View ... not authorized" when run
+-- as WEST_COAST_MANAGER.
+GRANT SELECT ON SEMANTIC VIEW DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_ANALYTICS_SEMANTIC TO ROLE WEST_COAST_MANAGER;
+
+-- Create a dedicated demo user whose DEFAULT_ROLE is WEST_COAST_MANAGER.
+-- Cortex Agents run with the querying user's DEFAULT role (not the active
+-- Snowsight role), so switching role in Snowsight has no effect on the agent.
+-- To verify Row Access Policies through CoWork, log into Snowsight as this
+-- user, then ask the Business Insights Agent — its results filter to CA, OR, WA.
+-- NOTE: No password is set here (to avoid committing a secret). Before first use,
+-- set a login password out-of-band, e.g. in Snowsight or via:
+--   ALTER USER west_coast_manager_user SET PASSWORD = '<your-choice>';
+CREATE OR REPLACE USER west_coast_manager_user
+    DEFAULT_ROLE = WEST_COAST_MANAGER
+    DEFAULT_WAREHOUSE = HOL_WH
+    MUST_CHANGE_PASSWORD = TRUE
+    COMMENT = 'Demo user for verifying Row Access Policies through the Business Insights Agent';
+
+GRANT ROLE WEST_COAST_MANAGER TO USER west_coast_manager_user;
+
 USE DATABASE DASH_AUTOMATED_INTELLIGENCE_DB;
 USE SCHEMA RAW;
 
@@ -1392,6 +1454,21 @@ UNION ALL SELECT 'What are the top complaint themes in support tickets?',
        PARSE_JSON('{"ground_truth_output": "The agent should use search_customer_feedback to find and analyze support tickets. The response should identify main complaint themes with examples from actual tickets."}')
 UNION ALL SELECT 'How many reviews mention sizing issues, and which products are most affected?',
        PARSE_JSON('{"ground_truth_output": "The agent should use search_customer_feedback to find reviews mentioning sizing issues. The response should provide a count and identify which products are most frequently mentioned in sizing complaints."}');
+
+-- ============================================================================
+-- CROSS-ROLE READ GRANTS (run after all pipeline tables exist)
+-- The Streamlit dashboard is owned by ACCOUNTADMIN (snow streamlit deploy sets the
+-- owner to the deploy connection's role) and dbt runs as AUTOMATED_INTELLIGENCE_ADMIN.
+-- Grant AUTOMATED_INTELLIGENCE_ADMIN SELECT on the pipeline tables it reads as dbt
+-- sources, so the dbt role / a fallback app role can access them. (dbt->ACCOUNTADMIN
+-- direction is handled by the FUTURE grants above + the post-dbt ALL grants note.)
+-- ============================================================================
+GRANT USAGE ON SCHEMA dash_automated_intelligence_db.raw TO ROLE automated_intelligence_admin;
+GRANT USAGE ON SCHEMA dash_automated_intelligence_db.dynamic_tables TO ROLE automated_intelligence_admin;
+GRANT USAGE ON SCHEMA dash_automated_intelligence_db.interactive TO ROLE automated_intelligence_admin;
+GRANT SELECT ON ALL TABLES IN SCHEMA dash_automated_intelligence_db.raw TO ROLE automated_intelligence_admin;
+GRANT SELECT ON ALL DYNAMIC TABLES IN SCHEMA dash_automated_intelligence_db.dynamic_tables TO ROLE automated_intelligence_admin;
+GRANT SELECT ON ALL TABLES IN SCHEMA dash_automated_intelligence_db.interactive TO ROLE automated_intelligence_admin;
 
 -- ============================================================================
 -- FINAL STEP: Deploy Streamlit Dashboard (run from CLI)
