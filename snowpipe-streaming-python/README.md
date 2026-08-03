@@ -69,6 +69,8 @@ CREATE OR REPLACE PIPE ORDER_ITEMS_PIPE AS COPY INTO ORDER_ITEMS;
 ### 3. Generate RSA Key Pair for Authentication
 
 ```bash
+cd snowpipe-streaming-python
+
 # Generate private key
 openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt
 
