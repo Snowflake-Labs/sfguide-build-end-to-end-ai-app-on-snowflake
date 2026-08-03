@@ -129,11 +129,11 @@ python automated_intelligence_streaming.py [num_orders]
 
 Examples:
 ```bash
-# Stream 100 orders (default)
+# Stream orders using the default batch size
 python automated_intelligence_streaming.py
 
-# Stream 10,000 orders
-python automated_intelligence_streaming.py 10000
+# Stream a custom number of orders
+python automated_intelligence_streaming.py 1000
 
 # Use custom config and profile files
 python automated_intelligence_streaming.py 1000 config_staging.properties profile_staging.json
@@ -152,11 +152,11 @@ python parallel_streaming_orchestrator.py <total_orders> <num_instances>
 
 Examples:
 ```bash
-# Stream 1M orders using 5 parallel instances
-python parallel_streaming_orchestrator.py 1000000 5
+# Stream orders using multiple parallel instances
+python parallel_streaming_orchestrator.py 100000 5
 
-# Stream 10M orders using 10 parallel instances
-python parallel_streaming_orchestrator.py 10000000 10
+# Scale up with more instances for higher throughput
+python parallel_streaming_orchestrator.py 500000 10
 ```
 
 **How it works:**
@@ -247,7 +247,7 @@ snowpipe-streaming-python/
 
 ### Performance Optimization
 - Batch inserts with `append_rows()` (vs single-row `append_row()`)
-- Configurable batch sizes (default: 10,000 orders)
+- Configurable batch sizes (configurable via `orders.batch.size` in config)
 - Parallel streaming with customer ID partitioning
 
 ## Comparison with Java Implementation
