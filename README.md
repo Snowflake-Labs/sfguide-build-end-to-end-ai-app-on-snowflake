@@ -165,7 +165,7 @@ cd automated-intelligence-dev-day-2026-hol
 Launch Snowflake CoCo and verify your connection:
 
 ```bash
-cortex
+cortex -c hol
 ```
 
 > **What to expect:** CoCo will start an interactive session in your terminal. You'll see your active connection, role, and warehouse displayed. You can type natural language prompts and CoCo will translate them into SQL or actions.
