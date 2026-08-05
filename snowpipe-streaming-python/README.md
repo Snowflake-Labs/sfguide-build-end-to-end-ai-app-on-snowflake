@@ -47,11 +47,28 @@ This application streams synthetic e-commerce data (customers, orders, and order
 
 ### 1. Install Dependencies
 
+Create a virtual environment, activate it, then install:
+
 ```bash
+cd snowpipe-streaming-python
+
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+
 pip install -r requirements.txt
 ```
 
-**SDK Version:** 1.1.2+ (Jan 2026) - includes Azure/GCP GA support and bug fixes.
+> **macOS Apple Silicon:** If your default `python3` is Rosetta-emulated (e.g. Anaconda), the install will fail with `No matching distribution found` — the SDK has no x86_64 macOS wheel. Use Homebrew's native arm64 Python instead:
+> ```bash
+> /opt/homebrew/bin/python3.11 -m venv .venv
+> source .venv/bin/activate
+> pip install -r requirements.txt
+> ```
+> Activate the venv at the start of each shell session before running the app.
+
+> **Intel Mac:** Not supported. Use a Linux Docker container.
+
+**SDK version:** 1.7.0
 
 ### 2. Grant Streaming Privileges
 
