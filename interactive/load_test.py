@@ -5,7 +5,7 @@ import statistics
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import snowflake.connector
 
-CONNECTION_NAME = os.getenv("SNOWFLAKE_CONNECTION_NAME", "dash-builder")
+CONNECTION_NAME = os.getenv("SNOWFLAKE_CONNECTION_NAME", "hol")
 NUM_CONCURRENT = 200
 NUM_QUERIES_PER_THREAD = 5
 
