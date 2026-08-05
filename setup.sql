@@ -849,7 +849,7 @@ CREATE OR REPLACE ALERT data_quality_alert
       AND measurement_time >= DATEADD('MINUTE', -10, CURRENT_TIMESTAMP())
   ))
   THEN
-    INSERT INTO data_quality_alerts (alert_time, issue_summary)
+INSERT INTO dash_automated_intelligence_db.raw.data_quality_alerts (alert_time, issue_summary)
     SELECT 
       CURRENT_TIMESTAMP(),
       'Data Quality Issue: NULL values detected - check vw_dq_monitoring_results for details';
@@ -1278,7 +1278,7 @@ WHERE oi.order_item_id = b.order_item_id;
 -- so the alert condition may evaluate to FALSE and insert nothing.
 -- Fix: seed data_quality_alerts directly using inline DMF calls (synchronous) so the table
 -- is populated immediately. The 5-minute scheduled alert then keeps it up to date.
-INSERT INTO data_quality_alerts (alert_time, issue_summary)
+INSERT INTO dash_automated_intelligence_db.raw.data_quality_alerts (alert_time, issue_summary)
 SELECT
     CURRENT_TIMESTAMP(),
     'Data Quality Issue: NULL values detected - '
