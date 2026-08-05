@@ -141,8 +141,8 @@ You'll be prompted for the following values (enter them one at a time):
 | User | Your Snowflake username | `jsmith` |
 | Password | Your Snowflake password | *(hidden)* |
 | Role | `ACCOUNTADMIN` | `ACCOUNTADMIN` |
-| Warehouse | Leave blank (will be created by setup) | *(leave empty)* |
-| Database | Leave blank (will be created by setup) | *(leave empty)* |
+
+Leave the rest empty.
 
 > **Tip:** Your account identifier is the part before `.snowflakecomputing.com` in your Snowflake URL. For example, if you log in at `https://myorg-myaccount.snowflakecomputing.com`, your account identifier is `myorg-myaccount`.
 
