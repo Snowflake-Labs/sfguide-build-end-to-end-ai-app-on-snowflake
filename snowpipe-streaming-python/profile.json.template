@@ -2,7 +2,7 @@
   "account": "YOUR_ACCOUNT",
   "user": "YOUR_USER",
   "url": "https://YOUR_ACCOUNT.snowflakecomputing.com",
-  "private_key_file": "rsa_key.p8",
+  "private_key_file": "../rsa_key.p8",
   "database": "DASH_AUTOMATED_INTELLIGENCE_DB",
   "schema": "STAGING",
   "warehouse": "HOL_WH",
