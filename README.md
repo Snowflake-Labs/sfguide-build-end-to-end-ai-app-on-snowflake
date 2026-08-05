@@ -606,8 +606,20 @@ snow sql -q "DESC USER <your-username>" -c hol | grep RSA_PUBLIC_KEY_FP
 
 ```bash
 cd snowpipe-streaming-python
-pip install -r requirements.txt
 
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+> **macOS Apple Silicon:** If your default `python3` is Rosetta-emulated (e.g. Anaconda), use Homebrew's arm64 Python to avoid a `No matching distribution found` error:
+> ```bash
+> /opt/homebrew/bin/python3.11 -m venv .venv
+> source .venv/bin/activate
+> pip install -r requirements.txt
+> ```
+
+```bash
 # Copy and configure profile
 cp profile.json.template profile.json
 ```
