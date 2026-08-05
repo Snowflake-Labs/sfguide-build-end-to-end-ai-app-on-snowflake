@@ -1272,6 +1272,21 @@ FROM dash_automated_intelligence_db.raw.dq_bad_items_names b
 WHERE oi.order_item_id = b.order_item_id;
 
 -- Fire the alert immediately so results are available by Section 7
+-- NOTE: EXECUTE ALERT queries vw_dq_monitoring_results, which relies on DMF measurements
+-- from TRIGGER_ON_CHANGES being committed to SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS.
+-- That write is asynchronous and is not guaranteed to complete before EXECUTE ALERT runs,
+-- so the alert condition may evaluate to FALSE and insert nothing.
+-- Fix: seed data_quality_alerts directly using inline DMF calls (synchronous) so the table
+-- is populated immediately. The 5-minute scheduled alert then keeps it up to date.
+INSERT INTO data_quality_alerts (alert_time, issue_summary)
+SELECT
+    CURRENT_TIMESTAMP(),
+    'Data Quality Issue: NULL values detected - '
+    || SNOWFLAKE.CORE.NULL_COUNT(SELECT total_amount FROM dash_automated_intelligence_db.raw.orders)::TEXT
+    || ' NULL total_amounts in ORDERS, '
+    || SNOWFLAKE.CORE.NULL_COUNT(SELECT quantity FROM dash_automated_intelligence_db.raw.order_items)::TEXT
+    || ' NULL quantities in ORDER_ITEMS';
+
 EXECUTE ALERT dash_automated_intelligence_db.raw.data_quality_alert;
 
 -- ============================================================================
