@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 import time
 from typing import List
@@ -321,7 +322,8 @@ if __name__ == "__main__":
     
     total_orders = int(sys.argv[1])
     num_instances = int(sys.argv[2])
-    config_file = sys.argv[3] if len(sys.argv) > 3 else "config.properties"
-    profile_file = sys.argv[4] if len(sys.argv) > 4 else "profile.json"
+    _root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    config_file = sys.argv[3] if len(sys.argv) > 3 else os.path.join(_root, "config_default.properties")
+    profile_file = sys.argv[4] if len(sys.argv) > 4 else os.path.join(_root, "profile.json")
     
     ParallelStreamingOrchestrator.main(total_orders, num_instances, config_file, profile_file)

@@ -1,5 +1,5 @@
 import streamlit as st
-import plotly.express as px
+import altair as alt
 from shared import get_session, show_header, format_number
 
 show_header()
@@ -48,9 +48,12 @@ def render_dashboard(schema: str, orders_table: str, order_items_table: str, sho
             """).to_pandas()
 
             if not status_df.empty:
-                fig = px.pie(status_df, values='ORDER_COUNT', names='ORDER_STATUS', height=400)
-                fig.update_traces(textposition='inside', textinfo='percent+label')
-                st.plotly_chart(fig, width='stretch')
+                fig = alt.Chart(status_df).mark_arc().encode(
+                    theta=alt.Theta("ORDER_COUNT:Q"),
+                    color=alt.Color("ORDER_STATUS:N", legend=alt.Legend(title="Order Status")),
+                    tooltip=["ORDER_STATUS", "ORDER_COUNT"],
+                ).properties(height=400)
+                st.altair_chart(fig, use_container_width=True)
             else:
                 st.info("⚠️ No data available.")
 
@@ -63,9 +66,12 @@ def render_dashboard(schema: str, orders_table: str, order_items_table: str, sho
             """).to_pandas()
 
             if not cat_df.empty:
-                fig = px.bar(cat_df, x='PRODUCT_CATEGORY', y='TOTAL_REVENUE',
-                            labels={'PRODUCT_CATEGORY': 'Category', 'TOTAL_REVENUE': 'Revenue'}, height=400)
-                st.plotly_chart(fig, width='stretch')
+                fig = alt.Chart(cat_df).mark_bar().encode(
+                    x=alt.X("PRODUCT_CATEGORY:N", title="Category"),
+                    y=alt.Y("TOTAL_REVENUE:Q", title="Revenue"),
+                    tooltip=["PRODUCT_CATEGORY", "TOTAL_REVENUE"],
+                ).properties(height=400)
+                st.altair_chart(fig, use_container_width=True)
             else:
                 st.info("⚠️ No data available.")
 
@@ -96,11 +102,14 @@ def render_dashboard(schema: str, orders_table: str, order_items_table: str, sho
         """).to_pandas()
 
         if not stacked_df.empty:
-            fig = px.bar(stacked_df, x='ORDER_SIZE', y='REVENUE', color='PRODUCT_CATEGORY',
-                        labels={'ORDER_SIZE': 'Order Size', 'REVENUE': 'Revenue', 'PRODUCT_CATEGORY': 'Category'},
-                        height=500, barmode='stack')
-            fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-            st.plotly_chart(fig, width='stretch')
+            size_order = ['Small (<$100)', 'Medium ($100-$500)', 'Large ($500-$2K)', 'Extra Large (>$2K)']
+            fig = alt.Chart(stacked_df).mark_bar().encode(
+                x=alt.X("ORDER_SIZE:N", title="Order Size", sort=size_order),
+                y=alt.Y("REVENUE:Q", title="Revenue"),
+                color=alt.Color("PRODUCT_CATEGORY:N", title="Category"),
+                tooltip=["ORDER_SIZE", "PRODUCT_CATEGORY", "REVENUE"],
+            ).properties(height=500)
+            st.altair_chart(fig, use_container_width=True)
         else:
             st.info("⚠️ No data available. Stream data first using Snowpipe Streaming.")
 

@@ -11,6 +11,7 @@ class ConfigManager:
         self._validate_file_exists(properties_path, "Properties")
         self._validate_file_exists(profile_path, "Profile")
         self.properties = self._load_properties(properties_path)
+        self._profile_path = profile_path
         self.profile_config = self._load_profile(profile_path)
         self._validate_required_properties()
         self._validate_required_profile_fields()
@@ -38,12 +39,17 @@ class ConfigManager:
             )
     
     def _validate_required_profile_fields(self) -> None:
-        required_fields = ["user", "account", "url", "private_key", "database", "schema", "warehouse"]
+        required_fields = ["user", "account", "url", "database", "schema", "warehouse"]
         missing = [field for field in required_fields if field not in self.profile_config]
         if missing:
             raise ValueError(
                 f"Required profile fields missing: {', '.join(missing)}\n"
                 f"Please ensure your profile.json contains all required Snowflake connection details."
+            )
+        if "private_key" not in self.profile_config and "private_key_file" not in self.profile_config:
+            raise ValueError(
+                "Profile must contain either 'private_key' (inline PEM string) "
+                "or 'private_key_file' (path to .p8 file)."
             )
 
     def _load_properties(self, path: str) -> Dict[str, str]:
@@ -81,6 +87,12 @@ class ConfigManager:
         return self.profile_config["url"]
 
     def get_private_key(self) -> str:
+        if "private_key_file" in self.profile_config:
+            key_path = self.profile_config["private_key_file"]
+            if not os.path.isabs(key_path):
+                key_path = os.path.join(os.path.dirname(os.path.abspath(self._profile_path)), key_path)
+            with open(key_path, "r") as f:
+                return f.read()
         return self.profile_config["private_key"]
 
     def get_database(self) -> str:

@@ -1,6 +1,7 @@
 # High-performance Snowpipe Streaming SDK (GA Sep 2025)
-# Replaces the classic snowflake-ingest package
-# See: https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-high-performance-migration
-snowpipe-streaming
+# Rust-backed binary — requires Linux x86_64/aarch64, macOS arm64, or Windows x64.
+# Intel Mac (macosx_x86_64) is NOT supported — run via Docker (see README).
+# PyPI: https://pypi.org/project/snowpipe-streaming/
+snowpipe-streaming>=1.0.0
 snowflake-connector-python>=3.6.0
 cryptography>=3.1.0

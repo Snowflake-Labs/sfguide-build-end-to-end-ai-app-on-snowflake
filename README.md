@@ -141,8 +141,8 @@ You'll be prompted for the following values (enter them one at a time):
 | User | Your Snowflake username | `jsmith` |
 | Password | Your Snowflake password | *(hidden)* |
 | Role | `ACCOUNTADMIN` | `ACCOUNTADMIN` |
-| Warehouse | Leave blank (will be created by setup) | *(leave empty)* |
-| Database | Leave blank (will be created by setup) | *(leave empty)* |
+
+Leave the rest empty.
 
 > **Tip:** Your account identifier is the part before `.snowflakecomputing.com` in your Snowflake URL. For example, if you log in at `https://myorg-myaccount.snowflakecomputing.com`, your account identifier is `myorg-myaccount`.
 
@@ -165,7 +165,7 @@ cd automated-intelligence-dev-day-2026-hol
 Launch Snowflake CoCo and verify your connection:
 
 ```bash
-cortex
+cortex -c hol
 ```
 
 > **What to expect:** CoCo will start an interactive session in your terminal. You'll see your active connection, role, and warehouse displayed. You can type natural language prompts and CoCo will translate them into SQL or actions.
@@ -272,7 +272,21 @@ Expected: Top-5 days are in September 2025 (back-to-season peak), each with ~$18
 
 > *"Install dbt dependencies and build all models in the dbt-analytics project"*
 
-CoCo runs `dbt deps` then `dbt build` to create all staging views and mart tables (9+ models). CoCo automatically injects your active Snowflake connection into the dbt profile — no manual configuration needed.
+CoCo runs `dbt deps` then `dbt build` to create all staging views and mart tables (9+ models).
+
+**Running dbt locally (agent guidance):** `dbt-analytics/profiles.yml` uses `env_var()` for `account`, `user`, `password`, and `warehouse` (defaulting to `HOL_WH`), so it works with no hardcoded secrets. When running dbt locally, resolve the credentials from the active `hol` Snowflake CLI connection (`snow connection list`) and export them as environment variables — **do not print or transcribe the password into the transcript or any file**. For example, set the env vars in the shell, then run:
+
+```bash
+export SNOWFLAKE_ACCOUNT=<account locator from snow connection list>
+export SNOWFLAKE_USER=<user from snow connection list>
+export SNOWFLAKE_PASSWORD=<password from snow connection list>
+export SNOWFLAKE_WAREHOUSE=HOL_WH
+cd dbt-analytics
+dbt deps
+dbt build --profiles-dir . --target dev
+```
+
+If dbt is run inside Snowflake (e.g., from Snowsight), no env vars are needed — the active session provides authentication.
 
 > **Expected output:** 71 tests pass, 1 warning (the `source_not_null_raw_orders_total_amount` test detects the 200 NULLs we injected for the Data Quality exercise — this is working as designed).
 
@@ -416,11 +430,19 @@ Key insight: Same query, same tables — different results based on who's asking
 
 ### Verify Through CoWork
 
-Switch to the **WEST_COAST_MANAGER** role in Snowsight, then open CoWork and ask the agent:
+Cortex Agents run with the querying user's **default role**, not the active role selected in Snowsight — so switching your role in the Snowsight UI has no effect on the agent's results. To see the Row Access Policy filter the agent, use the dedicated demo user created by `setup.sql`:
+
+First, set a login password for the demo user (setup.sql creates the user without a hardcoded password, to avoid committing a secret):
+
+```sql
+ALTER USER west_coast_manager_user SET PASSWORD = '<your-choice>';
+```
+
+Then log into Snowsight as **`west_coast_manager_user`** with the password you just set, open CoWork, and ask the agent:
 
 > *"What is our total revenue and customer count by state?"*
 
-The agent returns results for only CA, OR, and WA — the Row Access Policy filters data transparently, even through AI-generated SQL.
+The agent returns results for only CA, OR, and WA — the Row Access Policy filters data transparently, even through AI-generated SQL. (Log back in as your admin user afterward.)
 
 ---
 
@@ -452,16 +474,17 @@ The evaluation dataset (7 questions + ground truth) was created by `setup.sql`. 
 
 1. Switch to the **ACCOUNTADMIN** role in Snowsight (top-left role selector)
 2. Navigate to **AI and ML > Agents > BUSINESS_INSIGHTS_AGENT > Evaluations** tab
-3. Click **New evaluation run**, name it (e.g. `hol-eval-run-1`), click **Next**
-4. Select **Create new dataset from table**
-5. Under **Source table**, set Database and schema to `DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC`, then select `AGENT_EVALUATION_DATA`
-6. Under **New dataset location**, keep `DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC`
-7. Set **Dataset name**: `hol_eval_dataset`
-8. Click **Next**
-9. Under **Define metrics**, confirm **Input query** = `INPUT_QUERY`
-10. Toggle on **Answer Correctness**, set **Expected answer** = `GROUND_TRUTH`
-11. Toggle on **Logical Consistency**
-12. Click **Create** — evaluation starts automatically (~3 min)
+3. Click **Use existing dataset**, then **Run an eval manually**
+4. Click **New evaluation run**, name it (e.g. `hol-eval-run-1`), click **Next**
+5. Select **Create new dataset from table**
+6. Under **Source table**, set Database and schema to `DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC`, then select `AGENT_EVALUATION_DATA`
+7. Under **New dataset location**, keep `DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC`
+8. Set **Dataset name**: `hol_eval_dataset`
+9. Click **Next**
+10. Under **Define metrics**, confirm **Input query** = `INPUT_QUERY`
+11. Toggle on **Answer Correctness**, set **Expected answer** = `GROUND_TRUTH`
+12. Toggle on **Logical Consistency**
+13. Click **Create** — evaluation starts automatically (~3 min)
 
 ### Interpret Results
 
@@ -545,9 +568,9 @@ CoCo creates the table with `CATALOG='SNOWFLAKE'` (no external volume needed) an
 
 ### Explore V3: Deletion Vectors
 
-> *"Create an Iceberg V3 table from RAW.ORDERS (ICEBERG_VERSION=3) with merge-on-read enabled, insert 1000 rows, then update 10 of them to demonstrate deletion vectors"*
+> *"Create an Iceberg V3 table and load enough data from RAW.ORDERS to demonstrate deletion vectors, then update a few rows and show that Snowflake used a deletion vector instead of rewriting the file."*
 
-CoCo creates a V3 table with `ENABLE_ICEBERG_MERGE_ON_READ = TRUE`, inserts data, then runs an UPDATE that uses deletion vectors instead of full file rewrites.
+CoCo creates a V3 Snowflake-managed Iceberg table (merge-on-read is the default for V3 managed tables), loads enough rows to exceed the data-file threshold below which deletion vectors are suppressed, then UPDATEs a small fraction of rows so Snowflake writes a deletion vector rather than rewriting the file.
 
 ### Explore V3: Default Values
 
@@ -583,17 +606,29 @@ snow sql -q "DESC USER <your-username>" -c hol | grep RSA_PUBLIC_KEY_FP
 
 ```bash
 cd snowpipe-streaming-python
-pip install -r requirements.txt
 
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+> **macOS Apple Silicon:** If your default `python3` is Rosetta-emulated (e.g. Anaconda), use Homebrew's arm64 Python to avoid a `No matching distribution found` error:
+> ```bash
+> /opt/homebrew/bin/python3.11 -m venv .venv
+> source .venv/bin/activate
+> pip install -r requirements.txt
+> ```
+
+```bash
 # Copy and configure profile
 cp profile.json.template profile.json
 ```
 
-Edit `profile.json` and set your `account`, `user`, `private_key` (contents of rsa_key.p8), and `role`.
+Edit `profile.json` and set your `account`, `user`, `private_key_file` (path to rsa_key.p8), and `role`.
 
 ```bash
-# Stream 10,000 orders
-python src/automated_intelligence_streaming.py 10000
+# Stream orders into staging
+python src/automated_intelligence_streaming.py 1000
 ```
 
 ### Verify Data Landed
@@ -603,7 +638,7 @@ SELECT COUNT(*) FROM dash_automated_intelligence_db.staging.orders_staging;
 SELECT COUNT(*) FROM dash_automated_intelligence_db.staging.order_items_staging;
 ```
 
-You should see 10,000 orders and ~50,000 order items in staging.
+Verify that row counts in both tables are consistent (each order should have matching order items).
 
 ### Merge into Production
 

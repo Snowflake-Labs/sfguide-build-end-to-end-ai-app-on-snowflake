@@ -26,3 +26,5 @@ profile.json
 env/
 venv/
 ENV/
+rsa_key.p8
+rsa_key.pub

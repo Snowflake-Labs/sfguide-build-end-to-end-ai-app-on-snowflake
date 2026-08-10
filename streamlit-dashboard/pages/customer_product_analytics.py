@@ -1,7 +1,5 @@
 import streamlit as st
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+import altair as alt
 from shared import get_session, show_header, format_number
 import pandas as pd
 
@@ -20,18 +18,8 @@ with tab1:
     st.subheader("Customer Lifetime Value & Segmentation")
     
     try:
-        table_check = session.sql("""
-            SELECT COUNT(*) as cnt 
-            FROM DASH_AUTOMATED_INTELLIGENCE_DB.INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_SCHEMA = 'DBT_ANALYTICS' AND TABLE_NAME = 'CUSTOMER_LIFETIME_VALUE'
-        """).to_pandas()
-        
-        if table_check.iloc[0]['CNT'] == 0:
-            st.info("📋 **dbt models not yet deployed**\n\nRun Section 8 (dbt Analytics) first to create the analytics tables:\n```\ndbt build\n```")
-        else:
-            # Query customer analytics from dbt marts
-            clv_query = """
-            SELECT 
+        clv_df = session.sql("""
+            SELECT
                 value_tier,
                 customer_status,
                 COUNT(*) as customer_count,
@@ -42,9 +30,11 @@ with tab1:
             FROM DASH_AUTOMATED_INTELLIGENCE_DB.DBT_ANALYTICS.CUSTOMER_LIFETIME_VALUE
             GROUP BY value_tier, customer_status
             ORDER BY customer_count DESC
-            """
-            
-            clv_df = session.sql(clv_query).to_pandas()
+        """).to_pandas()
+
+        if len(clv_df) == 0:
+            st.info("📋 **dbt models not yet deployed**\n\nRun Section 8 (dbt Analytics) first to create the analytics tables:\n```\ndbt build\n```")
+        else:
             
             if len(clv_df) > 0:
                 # Display key metrics
@@ -77,40 +67,39 @@ with tab1:
                     tier_summary = clv_df.groupby('VALUE_TIER')['CUSTOMER_COUNT'].sum().reset_index()
                     tier_summary = tier_summary.sort_values('CUSTOMER_COUNT', ascending=False)
                     
-                    fig_tier = px.pie(
-                        tier_summary,
-                        values='CUSTOMER_COUNT',
-                        names='VALUE_TIER',
-                        color='VALUE_TIER',
-                        color_discrete_map={
-                            'high_value': '#1f77b4',
-                            'medium_value': '#ff7f0e',
-                            'low_value': '#2ca02c',
-                            'no_purchases': '#d62728'
-                        }
+                    fig_tier = alt.Chart(tier_summary).mark_arc().encode(
+                        theta=alt.Theta("CUSTOMER_COUNT:Q"),
+                        color=alt.Color(
+                            "VALUE_TIER:N",
+                            legend=alt.Legend(title="Value Tier"),
+                            scale=alt.Scale(
+                                domain=["high_value", "medium_value", "low_value", "no_purchases"],
+                                range=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"],
+                            ),
+                        ),
+                        tooltip=["VALUE_TIER", "CUSTOMER_COUNT"],
                     )
-                    fig_tier.update_traces(textposition='inside', textinfo='percent+label')
-                    st.plotly_chart(fig_tier, use_container_width=True)
+                    st.altair_chart(fig_tier, use_container_width=True)
                 
                 with col2:
                     st.markdown("**Customer Status Distribution**")
                     status_summary = clv_df.groupby('CUSTOMER_STATUS')['CUSTOMER_COUNT'].sum().reset_index()
                     status_summary = status_summary.sort_values('CUSTOMER_COUNT', ascending=False)
                     
-                    fig_status = px.bar(
-                        status_summary,
-                        x='CUSTOMER_STATUS',
-                        y='CUSTOMER_COUNT',
-                        color='CUSTOMER_STATUS',
-                        color_discrete_map={
-                            'active': '#2ca02c',
-                            'at_risk': '#ff7f0e',
-                            'churned': '#d62728',
-                            'never_purchased': '#7f7f7f'
-                        }
+                    fig_status = alt.Chart(status_summary).mark_bar().encode(
+                        x=alt.X("CUSTOMER_STATUS:N", title="Status"),
+                        y=alt.Y("CUSTOMER_COUNT:Q", title="Customers"),
+                        color=alt.Color(
+                            "CUSTOMER_STATUS:N",
+                            legend=None,
+                            scale=alt.Scale(
+                                domain=["active", "at_risk", "churned", "never_purchased"],
+                                range=["#2ca02c", "#ff7f0e", "#d62728", "#7f7f7f"],
+                            ),
+                        ),
+                        tooltip=["CUSTOMER_STATUS", "CUSTOMER_COUNT"],
                     )
-                    fig_status.update_layout(showlegend=False, xaxis_title="Status", yaxis_title="Customers")
-                    st.plotly_chart(fig_status, use_container_width=True)
+                    st.altair_chart(fig_status, use_container_width=True)
                 
                 st.divider()
                 
@@ -119,32 +108,24 @@ with tab1:
                 
                 with col1:
                     st.markdown("**Revenue by Value Tier & Status**")
-                    fig_revenue = px.sunburst(
-                        clv_df,
-                        path=['VALUE_TIER', 'CUSTOMER_STATUS'],
-                        values='TOTAL_REVENUE_SUM',
-                        color='TOTAL_REVENUE_SUM',
-                        color_continuous_scale='Blues'
+                    fig_revenue = alt.Chart(clv_df).mark_bar().encode(
+                        x=alt.X("VALUE_TIER:N", title="Value Tier"),
+                        y=alt.Y("TOTAL_REVENUE_SUM:Q", title="Revenue"),
+                        color=alt.Color("CUSTOMER_STATUS:N", title="Customer Status"),
+                        tooltip=["VALUE_TIER", "CUSTOMER_STATUS", "TOTAL_REVENUE_SUM"],
                     )
-                    st.plotly_chart(fig_revenue, use_container_width=True)
+                    st.altair_chart(fig_revenue, use_container_width=True)
                 
                 with col2:
                     st.markdown("**Average RFM Score by Segment**")
-                    fig_rfm = px.scatter(
-                        clv_df,
-                        x='AVG_ORDERS',
-                        y='AVG_REVENUE',
-                        size='CUSTOMER_COUNT',
-                        color='AVG_RFM_SCORE',
-                        hover_data=['VALUE_TIER', 'CUSTOMER_STATUS'],
-                        color_continuous_scale='Viridis',
-                        labels={
-                            'AVG_ORDERS': 'Avg Orders per Customer',
-                            'AVG_REVENUE': 'Avg Revenue per Customer',
-                            'AVG_RFM_SCORE': 'RFM Score'
-                        }
+                    fig_rfm = alt.Chart(clv_df).mark_circle().encode(
+                        x=alt.X("AVG_ORDERS:Q", title="Avg Orders per Customer"),
+                        y=alt.Y("AVG_REVENUE:Q", title="Avg Revenue per Customer"),
+                        size=alt.Size("CUSTOMER_COUNT:Q", title="Customers"),
+                        color=alt.Color("AVG_RFM_SCORE:Q", title="RFM Score", scale=alt.Scale(scheme="viridis")),
+                        tooltip=["VALUE_TIER", "CUSTOMER_STATUS", "AVG_ORDERS", "AVG_REVENUE", "AVG_RFM_SCORE", "CUSTOMER_COUNT"],
                     )
-                    st.plotly_chart(fig_rfm, use_container_width=True)
+                    st.altair_chart(fig_rfm, use_container_width=True)
                 
                 st.divider()
                 
@@ -186,18 +167,8 @@ with tab2:
     st.subheader("Product Affinity & Recommendations")
     
     try:
-        table_check = session.sql("""
-            SELECT COUNT(*) as cnt 
-            FROM DASH_AUTOMATED_INTELLIGENCE_DB.INFORMATION_SCHEMA.TABLES 
-            WHERE TABLE_SCHEMA = 'DBT_ANALYTICS' AND TABLE_NAME = 'PRODUCT_PERFORMANCE'
-        """).to_pandas()
-        
-        if table_check.iloc[0]['CNT'] == 0:
-            st.info("📋 **dbt models not yet deployed**\n\nRun Section 8 (dbt Analytics) first to create the analytics tables:\n```\ndbt build\n```")
-        else:
-            # Query product affinity data
-            affinity_query = """
-            SELECT 
+        affinity_df = session.sql("""
+            SELECT
                 product_a_name,
                 product_a_category,
                 product_b_name,
@@ -210,9 +181,11 @@ with tab2:
             FROM DASH_AUTOMATED_INTELLIGENCE_DB.DBT_ANALYTICS.PRODUCT_AFFINITY
             ORDER BY lift DESC, times_bought_together DESC
             LIMIT 100
-            """
-            
-            affinity_df = session.sql(affinity_query).to_pandas()
+        """).to_pandas()
+
+        if len(affinity_df) == 0:
+            st.info("📋 **dbt models not yet deployed**\n\nRun Section 8 (dbt Analytics) first to create the analytics tables:\n```\ndbt build\n```")
+        else:
             
             if len(affinity_df) > 0:
                 # Key metrics
@@ -244,36 +217,33 @@ with tab2:
                     strength_counts = affinity_df['AFFINITY_STRENGTH'].value_counts().reset_index()
                     strength_counts.columns = ['Strength', 'Count']
                     
-                    fig_strength = px.bar(
-                        strength_counts,
-                        x='Strength',
-                        y='Count',
-                        color='Strength',
-                        color_discrete_map={
-                            'very_strong': '#1f77b4',
-                            'strong': '#2ca02c',
-                            'moderate': '#ff7f0e',
-                            'weak': '#d62728'
-                        }
+                    fig_strength = alt.Chart(strength_counts).mark_bar().encode(
+                        x=alt.X("Strength:N"),
+                        y=alt.Y("Count:Q"),
+                        color=alt.Color(
+                            "Strength:N",
+                            legend=None,
+                            scale=alt.Scale(
+                                domain=["very_strong", "strong", "moderate", "weak"],
+                                range=["#1f77b4", "#2ca02c", "#ff7f0e", "#d62728"],
+                            ),
+                        ),
+                        tooltip=["Strength", "Count"],
                     )
-                    fig_strength.update_layout(showlegend=False)
-                    st.plotly_chart(fig_strength, use_container_width=True)
+                    st.altair_chart(fig_strength, use_container_width=True)
                 
                 with col2:
                     st.markdown("**Top 10 Product Pairs by Lift**")
                     top_pairs = affinity_df.head(10).copy()
                     top_pairs['pair'] = top_pairs['PRODUCT_A_NAME'] + ' + ' + top_pairs['PRODUCT_B_NAME']
                     
-                    fig_lift = px.bar(
-                        top_pairs,
-                        y='pair',
-                        x='LIFT',
-                        orientation='h',
-                        color='LIFT',
-                        color_continuous_scale='Blues'
+                    fig_lift = alt.Chart(top_pairs).mark_bar().encode(
+                        y=alt.Y("pair:N", title="", sort=alt.EncodingSortField(field="LIFT", order="descending")),
+                        x=alt.X("LIFT:Q", title="Lift Score"),
+                        color=alt.Color("LIFT:Q", scale=alt.Scale(scheme="blues"), legend=None),
+                        tooltip=["pair", "LIFT"],
                     )
-                    fig_lift.update_layout(yaxis_title="", xaxis_title="Lift Score")
-                    st.plotly_chart(fig_lift, use_container_width=True)
+                    st.altair_chart(fig_lift, use_container_width=True)
                 
                 st.divider()
                 
@@ -281,26 +251,21 @@ with tab2:
                 st.markdown("**Purchase Frequency Heatmap**")
                 top_20_pairs = affinity_df.head(20)
                 
-                fig_freq = px.scatter(
-                    top_20_pairs,
-                    x='TIMES_BOUGHT_TOGETHER',
-                    y='LIFT',
-                    size='CONFIDENCE_A_TO_B',
-                    color='AFFINITY_STRENGTH',
-                    hover_data=['PRODUCT_A_NAME', 'PRODUCT_B_NAME'],
-                    labels={
-                        'TIMES_BOUGHT_TOGETHER': 'Times Bought Together',
-                        'LIFT': 'Lift Score',
-                        'CONFIDENCE_A_TO_B': 'Confidence'
-                    },
-                    color_discrete_map={
-                        'very_strong': '#1f77b4',
-                        'strong': '#2ca02c',
-                        'moderate': '#ff7f0e',
-                        'weak': '#d62728'
-                    }
+                fig_freq = alt.Chart(top_20_pairs).mark_circle().encode(
+                    x=alt.X("TIMES_BOUGHT_TOGETHER:Q", title="Times Bought Together"),
+                    y=alt.Y("LIFT:Q", title="Lift Score"),
+                    size=alt.Size("CONFIDENCE_A_TO_B:Q", title="Confidence"),
+                    color=alt.Color(
+                        "AFFINITY_STRENGTH:N",
+                        title="Affinity",
+                        scale=alt.Scale(
+                            domain=["very_strong", "strong", "moderate", "weak"],
+                            range=["#1f77b4", "#2ca02c", "#ff7f0e", "#d62728"],
+                        ),
+                    ),
+                    tooltip=["PRODUCT_A_NAME", "PRODUCT_B_NAME", "TIMES_BOUGHT_TOGETHER", "LIFT", "CONFIDENCE_A_TO_B", "AFFINITY_STRENGTH"],
                 )
-                st.plotly_chart(fig_freq, use_container_width=True)
+                st.altair_chart(fig_freq, use_container_width=True)
                 
                 st.divider()
                 

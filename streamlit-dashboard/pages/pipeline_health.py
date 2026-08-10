@@ -52,7 +52,7 @@ else:
             
             display_columns = ['name', 'scheduling_state', 'refresh_mode', 'target_lag', 'warehouse']
             available_columns = [col for col in display_columns if col in dt_df.columns]
-            st.dataframe(dt_df[available_columns], width='stretch', hide_index=True)
+            st.dataframe(dt_df[available_columns], use_container_width=True, hide_index=True)
             
             all_active = all(dt_df['scheduling_state'] == 'ACTIVE')
             if all_active:

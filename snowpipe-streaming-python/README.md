@@ -47,28 +47,49 @@ This application streams synthetic e-commerce data (customers, orders, and order
 
 ### 1. Install Dependencies
 
+Create a virtual environment, activate it, then install:
+
 ```bash
+cd snowpipe-streaming-python
+
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+
 pip install -r requirements.txt
 ```
 
-**SDK Version:** 1.1.2+ (Jan 2026) - includes Azure/GCP GA support and bug fixes.
+> **macOS Apple Silicon:** If your default `python3` is Rosetta-emulated (e.g. Anaconda), the install will fail with `No matching distribution found` — the SDK has no x86_64 macOS wheel. Use Homebrew's native arm64 Python instead:
+> ```bash
+> /opt/homebrew/bin/python3.11 -m venv .venv
+> source .venv/bin/activate
+> pip install -r requirements.txt
+> ```
+> Activate the venv at the start of each shell session before running the app.
 
-### 2. Create Snowflake PIPE Objects
+> **Intel Mac:** Not supported. Use a Linux Docker container.
 
-Run the following SQL in Snowflake using the `AUTOMATED_INTELLIGENCE_ADMIN` role:
+**SDK version:** 1.7.0
+
+### 2. Grant Streaming Privileges
+
+The `ORDERS_STAGING-STREAMING` and `ORDER_ITEMS_STAGING-STREAMING` pipes are auto-created by Snowflake on first connect using the reserved `<TABLE_NAME>-STREAMING` naming convention — do **not** create them manually. You only need to grant the required privileges.
+
+Run the following SQL as `ACCOUNTADMIN`:
 
 ```sql
-USE ROLE AUTOMATED_INTELLIGENCE_ADMIN;
-USE DATABASE DASH_AUTOMATED_INTELLIGENCE_DB;
-USE SCHEMA RAW;
+USE ROLE ACCOUNTADMIN;
 
-CREATE OR REPLACE PIPE ORDERS_PIPE AS COPY INTO ORDERS;
-CREATE OR REPLACE PIPE ORDER_ITEMS_PIPE AS COPY INTO ORDER_ITEMS;
+GRANT USAGE  ON SCHEMA DASH_AUTOMATED_INTELLIGENCE_DB.STAGING                    TO ROLE AUTOMATED_INTELLIGENCE_ADMIN;
+GRANT INSERT ON TABLE  DASH_AUTOMATED_INTELLIGENCE_DB.STAGING.ORDERS_STAGING     TO ROLE AUTOMATED_INTELLIGENCE_ADMIN;
+GRANT INSERT ON TABLE  DASH_AUTOMATED_INTELLIGENCE_DB.STAGING.ORDER_ITEMS_STAGING TO ROLE AUTOMATED_INTELLIGENCE_ADMIN;
+GRANT CREATE PIPE ON SCHEMA DASH_AUTOMATED_INTELLIGENCE_DB.STAGING                TO ROLE AUTOMATED_INTELLIGENCE_ADMIN;
 ```
 
 ### 3. Generate RSA Key Pair for Authentication
 
 ```bash
+cd snowpipe-streaming-python
+
 # Generate private key
 openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt
 
@@ -125,11 +146,11 @@ python automated_intelligence_streaming.py [num_orders]
 
 Examples:
 ```bash
-# Stream 100 orders (default)
+# Stream orders using the default batch size
 python automated_intelligence_streaming.py
 
-# Stream 10,000 orders
-python automated_intelligence_streaming.py 10000
+# Stream a custom number of orders
+python automated_intelligence_streaming.py 1000
 
 # Use custom config and profile files
 python automated_intelligence_streaming.py 1000 config_staging.properties profile_staging.json
@@ -148,11 +169,11 @@ python parallel_streaming_orchestrator.py <total_orders> <num_instances>
 
 Examples:
 ```bash
-# Stream 1M orders using 5 parallel instances
-python parallel_streaming_orchestrator.py 1000000 5
+# Stream orders using multiple parallel instances
+python parallel_streaming_orchestrator.py 100000 5
 
-# Stream 10M orders using 10 parallel instances
-python parallel_streaming_orchestrator.py 10000000 10
+# Scale up with more instances for higher throughput
+python parallel_streaming_orchestrator.py 500000 10
 ```
 
 **How it works:**
@@ -243,7 +264,7 @@ snowpipe-streaming-python/
 
 ### Performance Optimization
 - Batch inserts with `append_rows()` (vs single-row `append_row()`)
-- Configurable batch sizes (default: 10,000 orders)
+- Configurable batch sizes (configurable via `orders.batch.size` in config)
 - Parallel streaming with customer ID partitioning
 
 ## Comparison with Java Implementation

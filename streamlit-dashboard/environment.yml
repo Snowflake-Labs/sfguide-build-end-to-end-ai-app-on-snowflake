@@ -2,5 +2,7 @@ name: streamlit_dashboard
 channels:
   - snowflake
 dependencies:
-  - streamlit
-  - plotly
+  - streamlit=1.48.0
+  - snowflake-snowpark-python
+  - pandas
+  - altair

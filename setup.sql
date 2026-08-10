@@ -79,6 +79,29 @@ CREATE SCHEMA IF NOT EXISTS dash_automated_intelligence_db.interactive;
 CREATE SCHEMA IF NOT EXISTS dash_automated_intelligence_db.semantic;
 CREATE SCHEMA IF NOT EXISTS dash_automated_intelligence_db.dbt_staging COMMENT = 'Schema for dbt staging models';
 CREATE SCHEMA IF NOT EXISTS dash_automated_intelligence_db.dbt_analytics COMMENT = 'Schema for dbt analytical models';
+CREATE SCHEMA IF NOT EXISTS dash_automated_intelligence_db.dbt_intermediate COMMENT = 'Schema for dbt intermediate models';
+
+-- dbt grants: AUTOMATED_INTELLIGENCE_ADMIN needs these to run dbt build
+-- (dbt_intermediate is pre-created above so the cross-role grants below resolve.)
+GRANT CREATE SCHEMA ON DATABASE dash_automated_intelligence_db TO ROLE automated_intelligence_admin;
+GRANT USAGE, CREATE VIEW, CREATE TABLE ON SCHEMA dash_automated_intelligence_db.dbt_staging TO ROLE automated_intelligence_admin;
+GRANT USAGE, CREATE VIEW, CREATE TABLE ON SCHEMA dash_automated_intelligence_db.dbt_analytics TO ROLE automated_intelligence_admin;
+GRANT USAGE, CREATE VIEW, CREATE TABLE ON SCHEMA dash_automated_intelligence_db.dbt_intermediate TO ROLE automated_intelligence_admin;
+
+-- Cross-role FUTURE grants for dbt schemas: dbt creates its models later (run as
+-- AUTOMATED_INTELLIGENCE_ADMIN). These FUTURE grants ensure the ACCOUNTADMIN-owned
+-- Streamlit dashboard can SELECT them as they are created. (ALL TABLES/ALL VIEWS
+-- grants for the existing dbt objects — none yet at this point — are applied in
+-- the post-dbt step documented in README / deploy.sh.) AUTOMATED_INTELLIGENCE_ADMIN
+-- read grants on the pipeline schemas are applied at the END of this script, once
+-- those tables exist.
+GRANT USAGE ON SCHEMA dash_automated_intelligence_db.dbt_analytics TO ROLE accountadmin;
+GRANT USAGE ON SCHEMA dash_automated_intelligence_db.dbt_staging TO ROLE accountadmin;
+GRANT USAGE ON SCHEMA dash_automated_intelligence_db.dbt_intermediate TO ROLE accountadmin;
+GRANT SELECT ON FUTURE TABLES IN SCHEMA dash_automated_intelligence_db.dbt_analytics TO ROLE accountadmin;
+GRANT SELECT ON FUTURE VIEWS  IN SCHEMA dash_automated_intelligence_db.dbt_analytics TO ROLE accountadmin;
+GRANT SELECT ON FUTURE VIEWS  IN SCHEMA dash_automated_intelligence_db.dbt_staging TO ROLE accountadmin;
+GRANT SELECT ON FUTURE VIEWS  IN SCHEMA dash_automated_intelligence_db.dbt_intermediate TO ROLE accountadmin;
 
 -- Create warehouse
 CREATE OR REPLACE WAREHOUSE hol_wh
@@ -239,6 +262,13 @@ CREATE TABLE IF NOT EXISTS order_items_staging (
     line_total FLOAT
 )
 COMMENT = 'Staging table for order item data from Snowpipe Streaming';
+
+-- Snowpipe Streaming grants: AUTOMATED_INTELLIGENCE_ADMIN streams into these tables
+-- and calls the merge/truncate/count procedures (all caller's rights).
+GRANT USAGE     ON SCHEMA dash_automated_intelligence_db.staging                      TO ROLE automated_intelligence_admin;
+GRANT INSERT, SELECT, DELETE, TRUNCATE ON TABLE orders_staging                        TO ROLE automated_intelligence_admin;
+GRANT INSERT, SELECT, DELETE, TRUNCATE ON TABLE order_items_staging                   TO ROLE automated_intelligence_admin;
+GRANT CREATE PIPE ON SCHEMA dash_automated_intelligence_db.staging                    TO ROLE automated_intelligence_admin;
 
 -- Snapshot table for benchmarking
 CREATE TABLE IF NOT EXISTS discount_snapshot (
@@ -778,21 +808,21 @@ ALTER TABLE order_items ADD DATA METRIC FUNCTION
   SNOWFLAKE.CORE.NULL_COUNT ON (quantity),
   SNOWFLAKE.CORE.NULL_COUNT ON (unit_price);
 
--- Create view for DMF results (wraps table functions)
--- Note: SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS view may not exist in all accounts
--- This custom view uses the table function approach which works universally
+-- Create view for DMF results using SNOWFLAKE.CORE table function
+-- Note: SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS is a view (no arguments);
+--       the parameterized table function lives in SNOWFLAKE.CORE.
 CREATE OR REPLACE VIEW vw_dq_monitoring_results AS
 SELECT * FROM TABLE(
-  SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS(
-    REF_ENTITY_NAME => 'dash_automated_intelligence_db.raw.orders',
-    REF_ENTITY_DOMAIN => 'table'
+  SNOWFLAKE.CORE.DATA_QUALITY_MONITORING_RESULTS(
+    REF_ENTITY_NAME => 'DASH_AUTOMATED_INTELLIGENCE_DB.RAW.ORDERS',
+    REF_ENTITY_DOMAIN => 'TABLE'
   )
 )
 UNION ALL
 SELECT * FROM TABLE(
-  SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS(
-    REF_ENTITY_NAME => 'dash_automated_intelligence_db.raw.order_items',
-    REF_ENTITY_DOMAIN => 'table'
+  SNOWFLAKE.CORE.DATA_QUALITY_MONITORING_RESULTS(
+    REF_ENTITY_NAME => 'DASH_AUTOMATED_INTELLIGENCE_DB.RAW.ORDER_ITEMS',
+    REF_ENTITY_DOMAIN => 'TABLE'
   )
 );
 
@@ -819,7 +849,7 @@ CREATE OR REPLACE ALERT data_quality_alert
       AND measurement_time >= DATEADD('MINUTE', -10, CURRENT_TIMESTAMP())
   ))
   THEN
-    INSERT INTO data_quality_alerts (alert_time, issue_summary)
+INSERT INTO dash_automated_intelligence_db.raw.data_quality_alerts (alert_time, issue_summary)
     SELECT 
       CURRENT_TIMESTAMP(),
       'Data Quality Issue: NULL values detected - check vw_dq_monitoring_results for details';
@@ -912,7 +942,7 @@ ALTER TABLE product_catalog SET CHANGE_TRACKING = TRUE;
 -- Create Cortex Search Service for semantic search over product descriptions
 CREATE OR REPLACE CORTEX SEARCH SERVICE product_search_service
   ON description
-  ATTRIBUTES product_name, product_category, features, price
+  ATTRIBUTES product_id, product_name, product_category, features, price
   WAREHOUSE = hol_wh
   TARGET_LAG = '1 hour'
   AS (
@@ -1242,6 +1272,21 @@ FROM dash_automated_intelligence_db.raw.dq_bad_items_names b
 WHERE oi.order_item_id = b.order_item_id;
 
 -- Fire the alert immediately so results are available by Section 7
+-- NOTE: EXECUTE ALERT queries vw_dq_monitoring_results, which relies on DMF measurements
+-- from TRIGGER_ON_CHANGES being committed to SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS.
+-- That write is asynchronous and is not guaranteed to complete before EXECUTE ALERT runs,
+-- so the alert condition may evaluate to FALSE and insert nothing.
+-- Fix: seed data_quality_alerts directly using inline DMF calls (synchronous) so the table
+-- is populated immediately. The 5-minute scheduled alert then keeps it up to date.
+INSERT INTO dash_automated_intelligence_db.raw.data_quality_alerts (alert_time, issue_summary)
+SELECT
+    CURRENT_TIMESTAMP(),
+    'Data Quality Issue: NULL values detected - '
+    || SNOWFLAKE.CORE.NULL_COUNT(SELECT total_amount FROM dash_automated_intelligence_db.raw.orders)::TEXT
+    || ' NULL total_amounts in ORDERS, '
+    || SNOWFLAKE.CORE.NULL_COUNT(SELECT quantity FROM dash_automated_intelligence_db.raw.order_items)::TEXT
+    || ' NULL quantities in ORDER_ITEMS';
+
 EXECUTE ALERT dash_automated_intelligence_db.raw.data_quality_alert;
 
 -- ============================================================================
@@ -1349,6 +1394,47 @@ GRANT USAGE ON WAREHOUSE HOL_WH TO ROLE WEST_COAST_MANAGER;
 GRANT SELECT ON ALL TABLES IN SCHEMA DASH_AUTOMATED_INTELLIGENCE_DB.RAW TO ROLE WEST_COAST_MANAGER;
 GRANT SELECT ON ALL DYNAMIC TABLES IN SCHEMA DASH_AUTOMATED_INTELLIGENCE_DB.DYNAMIC_TABLES TO ROLE WEST_COAST_MANAGER;
 
+-- Grant access to the Cortex Search services used by the Business Insights
+-- Agent's search tools. Search services are not tables, so the SELECT grants
+-- above do not cover them — USAGE must be granted separately, or the agent's
+-- search_customer_feedback and search_products tools fail with access errors
+-- when run as WEST_COAST_MANAGER.
+GRANT USAGE ON CORTEX SEARCH SERVICE DASH_AUTOMATED_INTELLIGENCE_DB.RAW.CUSTOMER_FEEDBACK_SEARCH TO ROLE WEST_COAST_MANAGER;
+GRANT USAGE ON CORTEX SEARCH SERVICE DASH_AUTOMATED_INTELLIGENCE_DB.RAW.PRODUCT_SEARCH_SERVICE TO ROLE WEST_COAST_MANAGER;
+
+-- Grant SELECT on the CUSTOMER_FEEDBACK view, which is the base_table for the
+-- multi-index search_customer_feedback tool (analytical search persists/reads
+-- from it). SELECT ON ALL TABLES above does not cover views, so grant it
+-- explicitly — without it the search tool fails when run as WEST_COAST_MANAGER.
+GRANT SELECT ON VIEW DASH_AUTOMATED_INTELLIGENCE_DB.RAW.CUSTOMER_FEEDBACK TO ROLE WEST_COAST_MANAGER;
+
+-- Grant access to the semantic view used by the Business Insights Agent's
+-- query_business_data (Cortex Analyst text-to-SQL) tool. Schema USAGE alone
+-- does not authorize the semantic view object. Semantic views use SELECT
+-- (not USAGE), and Cortex Agents require the executing role to have SELECT on
+-- BOTH the semantic view and its underlying tables. The underlying-table
+-- SELECT is already covered by the SELECT ON ALL TABLES grant above; this
+-- grants SELECT on the semantic view itself. Without it the agent's
+-- text-to-SQL tool fails with "Semantic View ... not authorized" when run
+-- as WEST_COAST_MANAGER.
+GRANT SELECT ON SEMANTIC VIEW DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_ANALYTICS_SEMANTIC TO ROLE WEST_COAST_MANAGER;
+
+-- Create a dedicated demo user whose DEFAULT_ROLE is WEST_COAST_MANAGER.
+-- Cortex Agents run with the querying user's DEFAULT role (not the active
+-- Snowsight role), so switching role in Snowsight has no effect on the agent.
+-- To verify Row Access Policies through CoWork, log into Snowsight as this
+-- user, then ask the Business Insights Agent — its results filter to CA, OR, WA.
+-- NOTE: No password is set here (to avoid committing a secret). Before first use,
+-- set a login password out-of-band, e.g. in Snowsight or via:
+--   ALTER USER west_coast_manager_user SET PASSWORD = '<your-choice>';
+CREATE OR REPLACE USER west_coast_manager_user
+    DEFAULT_ROLE = WEST_COAST_MANAGER
+    DEFAULT_WAREHOUSE = HOL_WH
+    MUST_CHANGE_PASSWORD = TRUE
+    COMMENT = 'Demo user for verifying Row Access Policies through the Business Insights Agent';
+
+GRANT ROLE WEST_COAST_MANAGER TO USER west_coast_manager_user;
+
 USE DATABASE DASH_AUTOMATED_INTELLIGENCE_DB;
 USE SCHEMA RAW;
 
@@ -1392,6 +1478,24 @@ UNION ALL SELECT 'What are the top complaint themes in support tickets?',
        PARSE_JSON('{"ground_truth_output": "The agent should use search_customer_feedback to find and analyze support tickets. The response should identify main complaint themes with examples from actual tickets."}')
 UNION ALL SELECT 'How many reviews mention sizing issues, and which products are most affected?',
        PARSE_JSON('{"ground_truth_output": "The agent should use search_customer_feedback to find reviews mentioning sizing issues. The response should provide a count and identify which products are most frequently mentioned in sizing complaints."}');
+
+-- ============================================================================
+-- CROSS-ROLE READ GRANTS (run after all pipeline tables exist)
+-- The Streamlit dashboard is owned by ACCOUNTADMIN (snow streamlit deploy sets the
+-- owner to the deploy connection's role) and dbt runs as AUTOMATED_INTELLIGENCE_ADMIN.
+-- Grant AUTOMATED_INTELLIGENCE_ADMIN SELECT on the pipeline tables it reads as dbt
+-- sources, so the dbt role / a fallback app role can access them. (dbt->ACCOUNTADMIN
+-- direction is handled by the FUTURE grants above + the post-dbt ALL grants note.)
+-- ============================================================================
+GRANT USAGE ON SCHEMA dash_automated_intelligence_db.raw TO ROLE automated_intelligence_admin;
+GRANT USAGE ON SCHEMA dash_automated_intelligence_db.dynamic_tables TO ROLE automated_intelligence_admin;
+GRANT USAGE ON SCHEMA dash_automated_intelligence_db.interactive TO ROLE automated_intelligence_admin;
+GRANT SELECT ON ALL TABLES IN SCHEMA dash_automated_intelligence_db.raw TO ROLE automated_intelligence_admin;
+-- INSERT + UPDATE needed for merge_staging_to_raw (caller's rights proc merges streaming data into raw)
+GRANT INSERT, UPDATE ON TABLE dash_automated_intelligence_db.raw.orders       TO ROLE automated_intelligence_admin;
+GRANT INSERT, UPDATE ON TABLE dash_automated_intelligence_db.raw.order_items  TO ROLE automated_intelligence_admin;
+GRANT SELECT ON ALL DYNAMIC TABLES IN SCHEMA dash_automated_intelligence_db.dynamic_tables TO ROLE automated_intelligence_admin;
+GRANT SELECT ON ALL TABLES IN SCHEMA dash_automated_intelligence_db.interactive TO ROLE automated_intelligence_admin;
 
 -- ============================================================================
 -- FINAL STEP: Deploy Streamlit Dashboard (run from CLI)

@@ -2,8 +2,9 @@
   "account": "YOUR_ACCOUNT",
   "user": "YOUR_USER",
   "url": "https://YOUR_ACCOUNT.snowflakecomputing.com",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY_HERE\n-----END PRIVATE KEY-----",
-  "database": "AUTOMATED_INTELLIGENCE",
+  "private_key_file": "../rsa_key.p8",
+  "database": "DASH_AUTOMATED_INTELLIGENCE_DB",
   "schema": "STAGING",
-  "warehouse": "COMPUTE_WH"
+  "warehouse": "HOL_WH",
+  "role": "AUTOMATED_INTELLIGENCE_ADMIN"
 }
