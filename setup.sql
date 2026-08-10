@@ -808,23 +808,14 @@ ALTER TABLE order_items ADD DATA METRIC FUNCTION
   SNOWFLAKE.CORE.NULL_COUNT ON (quantity),
   SNOWFLAKE.CORE.NULL_COUNT ON (unit_price);
 
--- Create view for DMF results using SNOWFLAKE.CORE table function
--- Note: SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS is a view (no arguments);
---       the parameterized table function lives in SNOWFLAKE.CORE.
+-- Create view for DMF results
+-- SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS is a plain account-scoped view;
+-- filter it down to the two tables we monitor.
 CREATE OR REPLACE VIEW vw_dq_monitoring_results AS
-SELECT * FROM TABLE(
-  SNOWFLAKE.CORE.DATA_QUALITY_MONITORING_RESULTS(
-    REF_ENTITY_NAME => 'DASH_AUTOMATED_INTELLIGENCE_DB.RAW.ORDERS',
-    REF_ENTITY_DOMAIN => 'TABLE'
-  )
-)
-UNION ALL
-SELECT * FROM TABLE(
-  SNOWFLAKE.CORE.DATA_QUALITY_MONITORING_RESULTS(
-    REF_ENTITY_NAME => 'DASH_AUTOMATED_INTELLIGENCE_DB.RAW.ORDER_ITEMS',
-    REF_ENTITY_DOMAIN => 'TABLE'
-  )
-);
+SELECT * FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS
+WHERE table_database = 'DASH_AUTOMATED_INTELLIGENCE_DB'
+  AND table_schema = 'RAW'
+  AND table_name IN ('ORDERS', 'ORDER_ITEMS');
 
 -- Create alert tracking table
 CREATE TABLE IF NOT EXISTS data_quality_alerts (
