@@ -808,21 +808,21 @@ ALTER TABLE order_items ADD DATA METRIC FUNCTION
   SNOWFLAKE.CORE.NULL_COUNT ON (quantity),
   SNOWFLAKE.CORE.NULL_COUNT ON (unit_price);
 
--- Create view for DMF results (wraps table functions)
--- Note: SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS view may not exist in all accounts
--- This custom view uses the table function approach which works universally
+-- Create view for DMF results using SNOWFLAKE.CORE table function
+-- Note: SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS is a view (no arguments);
+--       the parameterized table function lives in SNOWFLAKE.CORE.
 CREATE OR REPLACE VIEW vw_dq_monitoring_results AS
 SELECT * FROM TABLE(
-  SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS(
-    REF_ENTITY_NAME => 'dash_automated_intelligence_db.raw.orders',
-    REF_ENTITY_DOMAIN => 'table'
+  SNOWFLAKE.CORE.DATA_QUALITY_MONITORING_RESULTS(
+    REF_ENTITY_NAME => 'DASH_AUTOMATED_INTELLIGENCE_DB.RAW.ORDERS',
+    REF_ENTITY_DOMAIN => 'TABLE'
   )
 )
 UNION ALL
 SELECT * FROM TABLE(
-  SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS(
-    REF_ENTITY_NAME => 'dash_automated_intelligence_db.raw.order_items',
-    REF_ENTITY_DOMAIN => 'table'
+  SNOWFLAKE.CORE.DATA_QUALITY_MONITORING_RESULTS(
+    REF_ENTITY_NAME => 'DASH_AUTOMATED_INTELLIGENCE_DB.RAW.ORDER_ITEMS',
+    REF_ENTITY_DOMAIN => 'TABLE'
   )
 );
 
