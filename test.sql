@@ -23,12 +23,12 @@ FROM SPECIFICATION $$
     "orchestration": "You are a business insights assistant for an outdoor sports equipment company selling skis, snowboards, boots, and accessories. Before calling any tool, explicitly state which tool you will use and why it is the right choice for this question. TOOL ROUTING RULES: (1) query_business_data: Use for ANY question about revenue, orders, customers, segments, discounts, metrics, counts, totals, trends, or aggregations over structured data. (2) search_customer_feedback: Use for ANY question about product reviews, customer feedback, ratings, support tickets, complaints, returns, sizing issues, quality problems, or shipping issues. This searches unstructured text across reviews and tickets. (3) search_products: Use for questions about product details, features, pricing, or catalog information. (4) COMBINE TOOLS: When a user asks WHY something happened (e.g. revenue dropped), use query_business_data first to quantify the impact, then search_customer_feedback to find qualitative explanations.",
     "response": "Be concise and data-driven. Always cite specific numbers from query results. When presenting search results, include relevant context like ratings, dates, and categories. Format currency values with $ and two decimal places. When combining multiple tool results, clearly connect the structured findings (what happened) with unstructured findings (why it happened).",
     "sample_questions": [
-      {"question": "Show me monthly revenue trend from June 2025 to April 2026"},
-      {"question": "Revenue dropped in February — what caused it and what do reviews say?"},
+      {"question": "Show me monthly revenue trend from August to November 2026"},
+      {"question": "Revenue dipped in October compared to November — what caused it and what do reviews say?"},
       {"question": "Find reviews mentioning wrong size with a rating below 3"},
       {"question": "Why are customers returning ski boots?"},
       {"question": "What is our total revenue and customer count by state?"},
-      {"question": "What are the top complaint themes in support tickets from February 2026?"},
+      {"question": "What are the top complaint themes in support tickets from October 2026?"},
       {"question": "How many reviews mention sizing issues, and which products are most affected?"}
     ]
   },
@@ -97,7 +97,7 @@ SHOW AGENTS LIKE 'BUSINESS_INSIGHTS_AGENT' IN SCHEMA DASH_AUTOMATED_INTELLIGENCE
 SELECT TRY_PARSE_JSON(
   SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
     'DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_INSIGHTS_AGENT',
-    $${ "messages": [{"role": "user", "content": [{"type": "text", "text": "Show me monthly revenue trend from June 2025 to April 2026"}]}], "stream": false }$$
+    $${ "messages": [{"role": "user", "content": [{"type": "text", "text": "Show me monthly revenue trend from August to November 2026"}]}], "stream": false }$$
   )
 ) AS q1_revenue_trend;
 
@@ -113,7 +113,7 @@ SELECT TRY_PARSE_JSON(
 SELECT TRY_PARSE_JSON(
   SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
     'DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_INSIGHTS_AGENT',
-    $${ "messages": [{"role": "user", "content": [{"type": "text", "text": "Revenue dropped in February — what caused it and what do reviews say?"}]}], "stream": false }$$
+    $${ "messages": [{"role": "user", "content": [{"type": "text", "text": "Revenue dipped in October compared to November — what caused it and what do reviews say?"}]}], "stream": false }$$
   )
 ) AS q3_full_response;
 
@@ -137,7 +137,7 @@ SELECT TRY_PARSE_JSON(
 SELECT TRY_PARSE_JSON(
   SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
     'DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_INSIGHTS_AGENT',
-    $${ "messages": [{"role": "user", "content": [{"type": "text", "text": "What are the top complaint themes in support tickets from February 2026?"}]}], "stream": false }$$
+    $${ "messages": [{"role": "user", "content": [{"type": "text", "text": "What are the top complaint themes in support tickets from October 2026?"}]}], "stream": false }$$
   )
 ) AS q6_full_response;
 

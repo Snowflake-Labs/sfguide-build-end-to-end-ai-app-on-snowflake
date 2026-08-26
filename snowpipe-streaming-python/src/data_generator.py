@@ -89,8 +89,8 @@ class DataGenerator:
     def generate_order(customer_id: int, customer_segment: str) -> Order:
         order_id = str(uuid.uuid4())
         
-        # Spread orders across different times of day (not just noon)
-        days_ago = random.randint(1, 365)
+        # Generate orders within the last 7 days (streaming = fresh data arriving now)
+        days_ago = random.randint(0, 7)
         hour = random.randint(0, 23)
         minute = random.randint(0, 59)
         second = random.randint(0, 59)

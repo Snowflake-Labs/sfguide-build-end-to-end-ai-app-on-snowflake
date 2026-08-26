@@ -29,6 +29,9 @@ A production-grade AI-powered retail analytics platform on Snowflake — from ra
 - Git installed locally
 - Basic familiarity with SQL and command-line tools
 
+### Estimated Cost
+~5 credits for the full lab with the default 10M-row dataset. The Interactive Warehouse does not auto-suspend — remember to suspend it when done (`ALTER WAREHOUSE hol_interactive_wh SUSPEND;`).
+
 ---
 
 ## Table of Contents
@@ -50,6 +53,15 @@ A production-grade AI-powered retail analytics platform on Snowflake — from ra
 15. [Optional: Streaming Ingestion](#optional-streaming-ingestion)
 16. [Cleanup](#cleanup)
 17. [Resources](#resources)
+
+### How to Use This Guide
+
+Throughout this guide you'll see two types of instructions:
+
+- **"Prompt CoCo:"** — Type the quoted text into Snowflake CoCo (your AI-assisted IDE). CoCo translates natural language into SQL, runs it, and shows results. This is the recommended workflow.
+- **SQL code blocks** — Raw SQL you can run directly in Snowsight or via `snow sql`. Use these when you want precise control or when CoCo isn't available.
+
+Both paths produce the same result. Use whichever feels natural.
 
 ---
 
@@ -170,7 +182,7 @@ cortex -c hol
 
 > **What to expect:** CoCo will start an interactive session in your terminal. You'll see your active connection, role, and warehouse displayed. You can type natural language prompts and CoCo will translate them into SQL or actions.
 
-Then run the core infrastructure script (this takes ~10-15 minutes):
+Then run the core infrastructure script (this takes ~5 minutes with the default 10M-row dataset):
 
 ```bash
 snow sql -f setup.sql -c hol
@@ -200,7 +212,7 @@ Expected: ~10M orders, ~25M order items, 2M customers, 10 products, 1200 reviews
 
 > *"What's the date range of our order data?"*
 
-Expected: June 2025 to September 2025.
+Expected: August to November 2026.
 
 This gives you a mental model of the dataset before we start transforming and analyzing it.
 
@@ -258,7 +270,7 @@ Ask CoCo:
 
 > *"Show me a sample of the daily business metrics — top 5 days by revenue"*
 
-Expected: Top-5 days are in September 2025 (back-to-season peak), each with ~$183M revenue and ~117K orders.
+Expected: Top-5 days are in November 2026 (holiday peak), each with ~$183M revenue and ~117K orders.
 
 ---
 
@@ -308,6 +320,16 @@ Demonstrate Optima Indexing in action:
 
 Open the query profile in Snowsight to see partition pruning — only a fraction of partitions scanned despite no explicit clustering key. This is Gen2's Optima Indexing in action.
 
+### Compare to Standard Warehouse
+
+Run the same query on the standard warehouse to see the difference:
+
+**Prompt CoCo:**
+
+> *"Now run the same point lookup for customer_id 5000 on HOL_WH (standard) and compare the partition pruning to the Gen2 result"*
+
+Without Optima Indexing, the standard warehouse scans significantly more partitions for the same point lookup. Compare the two query profiles side-by-side in Snowsight to see the contrast.
+
 ---
 
 ## Interactive Tables
@@ -333,6 +355,8 @@ WHERE order_id = '<any-order-uuid>';
 ```
 
 ### Concurrency Load Test
+
+> **Prerequisite:** `pip install snowflake-connector-python` (the load test script uses it directly).
 
 **Prompt CoCo:**
 
@@ -378,11 +402,11 @@ This demonstrates how teams package repeatable workflows as shareable CoCo skill
 
 ### Test Agent Routing
 
-Open the **Snowflake CoWork** interface in Snowsight: navigate to **AI & ML → CoWork** (or search "CoWork" in the global search bar). Select the `BUSINESS_INSIGHTS_AGENT` agent. Then try each question to demonstrate different tool routing:
+Open the **Snowflake CoWork** interface in Snowsight: navigate to **AI & ML → CoWork** (or **Snowflake Intelligence → CoWork** depending on your account version — you can also search "CoWork" in the global search bar). Select the `BUSINESS_INSIGHTS_AGENT` agent. Then try each question to demonstrate different tool routing:
 
 | Question | Tools Used |
 |----------|-----------|
-| "Show me monthly revenue trend from June to September 2025" | Cortex Analyst (text-to-SQL) |
+| "Show me monthly revenue trend from August to November 2026" | Cortex Analyst (text-to-SQL) |
 | "Which month had the lowest revenue, and what do customer reviews say about that period?" | Cortex Analyst + Agentic Search |
 | "Find reviews mentioning wrong size with a rating below 3" | Agentic Search (filtered) |
 | "Why are customers returning ski boots?" | Agentic Search (reviews + tickets) |
@@ -398,9 +422,9 @@ For complex questions that span multiple data sources, use [Deep Research](https
 
 In CoWork, click the **+** button in the message bar and select **Deep Research**, then ask:
 
-> *"Why did February have the highest cancellation rate? Investigate across order data, customer reviews, and support tickets to identify root causes."*
+> *"What are the root causes of customer dissatisfaction? Investigate across order cancellations, product reviews, and support tickets to identify the top drivers and which products are most affected."*
 
-CoWork runs parallel agents that cross-reference structured metrics (cancellation rates, revenue drops) with unstructured feedback (reviews mentioning sizing issues, tickets about returns). After 2-5 minutes, it produces a multi-section report with every claim traced back to source data.
+CoWork runs parallel agents that cross-reference structured metrics (cancellation rates, return patterns) with unstructured feedback (reviews mentioning sizing issues, tickets about defects). After 2-5 minutes, it produces a multi-section report with every claim traced back to source data.
 
 ### Save as Artifact
 
@@ -441,7 +465,7 @@ JOIN dash_automated_intelligence_db.raw.customers c ON o.customer_id = c.custome
 GROUP BY c.state ORDER BY total_revenue DESC;
 ```
 
-Result: all 10 states visible.
+Result: all 10 regions visible (9 US states + British Columbia).
 
 **As WEST_COAST_MANAGER (restricted):**
 
@@ -685,6 +709,20 @@ To remove all objects created during this lab:
 ```bash
 snow sql -f cleanup.sql -c hol
 ```
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+|---------|-------------|-----|
+| DMF results missing after setup | `SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS` populates asynchronously (up to 15 min) | Wait, or run `EXECUTE ALERT dash_automated_intelligence_db.raw.dq_alert;` to force check |
+| Dynamic Table stuck in REFRESHING | Upstream DT hasn't finished first refresh | Check `SELECT * FROM TABLE(INFORMATION_SCHEMA.DYNAMIC_TABLE_REFRESH_HISTORY())` for errors |
+| Agent not appearing in CoWork | Agent not registered with Snowflake Intelligence object | Run `ALTER SNOWFLAKE INTELLIGENCE ... ADD AGENT ...` (see `create_agent.sql`) |
+| Cortex Search returns stale results | Incremental refresh doesn't pick up attribute value changes | Recreate with `CREATE OR REPLACE CORTEX SEARCH SERVICE` |
+| Interactive Warehouse burns credits | Interactive warehouses don't auto-suspend | Run `ALTER WAREHOUSE hol_interactive_wh SUSPEND` when not in use |
+| `load_test.py` connection error | Missing connector package | `pip install snowflake-connector-python` |
+| `west_coast_manager_user` can't log in | No password set | `ALTER USER west_coast_manager_user SET PASSWORD = '<your-choice>';` |
 
 ---
 

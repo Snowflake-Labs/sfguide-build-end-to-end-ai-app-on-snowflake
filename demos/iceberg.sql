@@ -86,7 +86,7 @@ SELECT
     total_amount,
     order_status
 FROM DASH_AUTOMATED_INTELLIGENCE_DB.RAW.ORDERS
-WHERE order_date >= '2025-01-01'
+WHERE order_date >= '2026-08-01'
 LIMIT 500;
 
 -- ============================================================================
@@ -94,14 +94,14 @@ LIMIT 500;
 -- ============================================================================
 
 -- This query benefits from partition pruning
--- Only scans partitions for Jan 2025
+-- Only scans partitions for Aug 2026
 SELECT 
     order_year,
     order_month,
     COUNT(*) AS order_count,
     SUM(total_amount) AS revenue
 FROM DASH_AUTOMATED_INTELLIGENCE_DB.ICEBERG.ORDERS_PARTITIONED
-WHERE order_year = 2025 AND order_month = 1
+WHERE order_year = 2026 AND order_month = 8
 GROUP BY order_year, order_month;
 
 -- Check query profile to verify partition pruning
@@ -128,7 +128,7 @@ SELECT * FROM DASH_AUTOMATED_INTELLIGENCE_DB.RAW.CUSTOMERS;
 
 -- Iceberg tables support time travel via snapshots
 SELECT * FROM DASH_AUTOMATED_INTELLIGENCE_DB.ICEBERG.ORDERS_PARTITIONED
-AT (TIMESTAMP => '2025-02-01 12:00:00'::TIMESTAMP);
+AT (TIMESTAMP => DATEADD(hour, -1, CURRENT_TIMESTAMP()));
 
 -- View snapshot history
 SELECT * FROM TABLE(DASH_AUTOMATED_INTELLIGENCE_DB.INFORMATION_SCHEMA.ICEBERG_TABLE_SNAPSHOT_HISTORY(
@@ -159,7 +159,7 @@ LIMIT 10;
 
 4. QUERY OPTIMIZATION:
    - Always filter on partition columns first
-   - Use explicit predicates (WHERE year = 2025, not WHERE YEAR(date) = 2025)
+   - Use explicit predicates (WHERE year = 2026, not WHERE YEAR(date) = 2026)
    - Check query profile for partition pruning
 
 5. INTEROPERABILITY:
