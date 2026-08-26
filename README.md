@@ -29,9 +29,6 @@ A production-grade AI-powered retail analytics platform on Snowflake — from ra
 - Git installed locally
 - Basic familiarity with SQL and command-line tools
 
-### Estimated Cost
-~5 credits for the full lab with the default 10M-row dataset. The Interactive Warehouse does not auto-suspend — remember to suspend it when done (`ALTER WAREHOUSE hol_interactive_wh SUSPEND;`).
-
 ---
 
 ## Table of Contents
@@ -119,7 +116,7 @@ Verify the installation:
 cortex --version
 ```
 
-### Alternative: Snowflake CoCo Desktop (Preview)
+### Alternative: Snowflake CoCo Desktop
 
 If you prefer a visual IDE experience, [download CoCo Desktop](https://www.snowflake.com/en/product/limited-access/cortex-code/) instead of (or alongside) the CLI. It's a native Mac/Windows app with a file editor, integrated terminal, agentic browser, and the same AI capabilities.
 
