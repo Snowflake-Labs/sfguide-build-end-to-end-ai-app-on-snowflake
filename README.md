@@ -402,7 +402,7 @@ This demonstrates how teams package repeatable workflows as shareable CoCo skill
 
 ### Test Agent Routing
 
-Open the **Snowflake CoWork** interface in Snowsight: navigate to **AI & ML → CoWork** (or **Snowflake Intelligence → CoWork** depending on your account version — you can also search "CoWork" in the global search bar). Select the `BUSINESS_INSIGHTS_AGENT` agent. Then try each question to demonstrate different tool routing:
+Open the **Snowflake CoWork** interface in Snowsight: navigate to **AI & ML > Snowflake CoWork**. Select the `BUSINESS_INSIGHTS_AGENT` agent. Then try each question to demonstrate different tool routing:
 
 | Question | Tools Used |
 |----------|-----------|
