@@ -420,6 +420,8 @@ Turn a one-time insight into a recurring report. After getting a useful answer, 
 
 CoWork creates a scheduled automation that re-runs the query weekly with fresh data and emails you the results — including a summary, key metrics, and a link to the full report for follow-up questions. Manage automations from the **Automations** tab in CoWork.
 
+> **Note:** Automations require a verified email address in Snowsight. Go to your profile (bottom-left) → verify your email if you haven't already.
+
 ---
 
 ## Security and Governance
