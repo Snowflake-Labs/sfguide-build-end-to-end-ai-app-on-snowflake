@@ -392,6 +392,34 @@ Open the **Snowflake CoWork** interface in Snowsight: navigate to **AI & ML → 
 
 This is the capstone moment — the agent routes across structured data (text-to-SQL) and unstructured data (Cortex Search) to answer "what happened" and "why."
 
+### Deep Research
+
+For complex questions that span multiple data sources, use [Deep Research](https://docs.snowflake.com/en/user-guide/snowflake-cortex/snowflake-cowork) — an investigation mode that decomposes your question into parallel sub-investigations and synthesizes findings into a fully-cited report.
+
+In CoWork, click the **+** button in the message bar and select **Deep Research**, then ask:
+
+> *"Why did February have the highest cancellation rate? Investigate across order data, customer reviews, and support tickets to identify root causes."*
+
+CoWork runs parallel agents that cross-reference structured metrics (cancellation rates, revenue drops) with unstructured feedback (reviews mentioning sizing issues, tickets about returns). After 2-5 minutes, it produces a multi-section report with every claim traced back to source data.
+
+### Save as Artifact
+
+When the agent produces a useful chart or table, save it for reuse. After the agent responds to a revenue question with a chart:
+
+1. Click the **save** icon on the chart to create an Artifact
+2. Name it (e.g. "Monthly Revenue Trend")
+3. Click **Share** to generate a link
+
+Artifacts are persistent, live references — they refresh with the latest data on demand. Shared links respect RBAC: a colleague opening the same artifact sees results filtered through their own data permissions.
+
+### Set Up an Automation
+
+Turn a one-time insight into a recurring report. After getting a useful answer, tell the agent:
+
+> *"Send me this report every Monday morning"*
+
+CoWork creates a scheduled automation that re-runs the query weekly with fresh data and emails you the results — including a summary, key metrics, and a link to the full report for follow-up questions. Manage automations from the **Automations** tab in CoWork.
+
 ---
 
 ## Security and Governance
