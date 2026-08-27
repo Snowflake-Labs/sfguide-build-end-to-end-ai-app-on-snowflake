@@ -15,13 +15,14 @@ You'll build analytical models with dbt, monitor data quality with Data Metric F
 - Create and query managed Iceberg V3 tables (deletion vectors, row lineage) *(optional)*
 - Create custom CoCo skills for reusable team workflows
 - Build a Cortex Agent with Cortex Analyst (semantic view + verified queries) and Agentic Search (multi-index Cortex Search)
+- Use Deep Research for multi-step investigations, save Artifacts, and schedule Automations
 - Evaluate agent quality with ground-truth datasets and LLM judges
 - Expose agents as managed MCP servers for external AI clients
 - Implement transparent row-level security with Row Access Policies
 
 ### What You'll Build
 
-A production-grade AI-powered retail analytics platform on Snowflake — from raw data to conversational AI insights, entirely within a single platform. You'll create dynamic transformation pipelines, interactive low-latency tables, dbt analytical models, a Cortex Agent that answers questions across structured and unstructured data, row-level security that works transparently through AI, and an MCP server that exposes your agent to external clients.
+A production-grade AI-powered retail analytics platform on Snowflake — from raw data to conversational AI insights, entirely within a single platform. You'll create dynamic transformation pipelines, interactive low-latency tables, dbt analytical models, a Cortex Agent that answers questions across structured and unstructured data, Deep Research reports that cross-reference multiple data sources, governed Artifacts you can share with your team, scheduled Automations for recurring analysis, row-level security that works transparently through AI, and an MCP server that exposes your agent to external clients.
 
 ### Prerequisites
 - Access to a [Snowflake account](https://signup.snowflake.com/?utm_source=snowflake-devrel&utm_medium=developer-guides&utm_cta=developer-guides)
@@ -593,13 +594,21 @@ CREATE MCP SERVER business_insights_mcp
 
 ### Connect from CoCo
 
+**CoCo Desktop (recommended):** Go to **Settings → MCP** and add a new HTTP server with this endpoint URL:
+
+```
+https://<account_url>/api/v2/databases/DASH_AUTOMATED_INTELLIGENCE_DB/schemas/SEMANTIC/mcp-servers/BUSINESS-INSIGHTS-MCP
+```
+
+Or type `/mcp` in the chat to manage MCP connections.
+
+**CoCo CLI:** Register the server (Desktop picks this up automatically):
+
 ```bash
 cortex mcp add business-insights https://<account_url>/api/v2/databases/DASH_AUTOMATED_INTELLIGENCE_DB/schemas/SEMANTIC/mcp-servers/BUSINESS-INSIGHTS-MCP --type http
 ```
 
-> **Desktop:** To add the MCP server in CoCo Desktop, go to **Settings → MCP** and add a new HTTP server with the endpoint URL above. Or type `/mcp` in the chat.
-
-Now any MCP-compatible client (CoCo, Claude Desktop, custom apps) can discover and call these tools via the standard MCP protocol.
+Now any MCP-compatible client (CoCo Desktop, Claude Desktop, custom apps) can discover and call these tools via the standard MCP protocol.
 
 ---
 
