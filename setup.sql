@@ -1460,6 +1460,13 @@ CREATE OR REPLACE INTERACTIVE WAREHOUSE hol_interactive_wh
 
 ALTER WAREHOUSE IF EXISTS hol_interactive_wh RESUME IF SUSPENDED;
 
+-- A fallback warehouse transparently re-runs any query that exceeds the 5-second
+-- cap on standard compute.  Without it, a slow query fails outright (000630/57014)
+-- and surfaces as an error to lab participants.
+-- See: https://docs.snowflake.com/en/user-guide/interactive
+ALTER WAREHOUSE hol_interactive_wh SET FALLBACK_WAREHOUSE = hol_wh;
+SHOW PARAMETERS LIKE '%FALLBACK%' IN WAREHOUSE hol_interactive_wh;   -- confirm it took
+
 -- Switch back to standard warehouse for remaining operations
 USE WAREHOUSE hol_wh;
 
