@@ -24,18 +24,18 @@ CREATE OR REPLACE TABLE agent_evaluation_data (
 );
 
 INSERT INTO agent_evaluation_data
-SELECT 'Show me monthly revenue trend from June 2025 to April 2026',
-       PARSE_JSON('{"ground_truth_output": "The agent should query structured business data using the query_business_data tool to produce a monthly revenue breakdown. The response should include revenue figures for each month from June 2025 through April 2026, showing seasonal peaks in November-January and a notable drop in February 2026."}')
-UNION ALL SELECT 'Revenue dropped in February — what caused it and what do reviews say?',
-       PARSE_JSON('{"ground_truth_output": "The agent should use BOTH query_business_data and search_customer_feedback. The response should connect the quantitative drop to qualitative reasons like increased cancellations, negative reviews, or customer complaints."}')
+SELECT 'Show me monthly revenue trend from August to November 2026',
+       PARSE_JSON('{"ground_truth_output": "The agent should query structured business data using the query_business_data tool to produce a monthly revenue breakdown. The response should include revenue figures for each month from August through November 2026, showing growth from August/September through the November holiday peak."}') 
+UNION ALL SELECT 'Revenue dipped in October compared to November — what caused it and what do reviews say?',
+       PARSE_JSON('{"ground_truth_output": "The agent should use BOTH query_business_data and search_customer_feedback. The response should connect the quantitative difference between October and November to qualitative reasons from customer reviews or support tickets."}') 
 UNION ALL SELECT 'Find reviews mentioning wrong size with a rating below 3',
-       PARSE_JSON('{"ground_truth_output": "The agent should use search_customer_feedback to find product reviews that mention sizing issues with low ratings below 3. Results should include specific review content, product names, and ratings."}')
+       PARSE_JSON('{"ground_truth_output": "The agent should use search_customer_feedback to find product reviews that mention sizing issues with low ratings below 3. Results should include specific review content, product names, and ratings."}') 
 UNION ALL SELECT 'Why are customers returning ski boots?',
-       PARSE_JSON('{"ground_truth_output": "The agent should search customer feedback related to ski boot returns. The response should identify common return reasons such as sizing issues, comfort problems, or quality concerns, citing specific customer feedback."}')
+       PARSE_JSON('{"ground_truth_output": "The agent should search customer feedback related to ski boot returns. The response should identify common return reasons such as sizing issues, comfort problems, or quality concerns, citing specific customer feedback."}') 
 UNION ALL SELECT 'What is our total revenue and customer count by state?',
-       PARSE_JSON('{"ground_truth_output": "The agent should use query_business_data to aggregate total revenue and distinct customer count grouped by state. The response should include states with their corresponding revenue and customer counts."}')
-UNION ALL SELECT 'What are the top complaint themes in support tickets from February 2026?',
-       PARSE_JSON('{"ground_truth_output": "The agent should use search_customer_feedback to find and analyze support tickets from February 2026. The response should identify main complaint themes with examples from actual tickets."}')
+       PARSE_JSON('{"ground_truth_output": "The agent should use query_business_data to aggregate total revenue and distinct customer count grouped by state. The response should include states with their corresponding revenue and customer counts."}') 
+UNION ALL SELECT 'What are the top complaint themes in support tickets from October 2026?',
+       PARSE_JSON('{"ground_truth_output": "The agent should use search_customer_feedback to find and analyze support tickets from October 2026. The response should identify main complaint themes with examples from actual tickets."}') 
 UNION ALL SELECT 'How many reviews mention sizing issues, and which products are most affected?',
        PARSE_JSON('{"ground_truth_output": "The agent should use search_customer_feedback to find reviews mentioning sizing issues. The response should provide a count and identify which products are most frequently mentioned in sizing complaints."}');
 

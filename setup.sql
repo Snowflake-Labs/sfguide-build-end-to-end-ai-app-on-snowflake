@@ -37,6 +37,7 @@ ALTER USER IDENTIFIER($current_user) SET DEFAULT_ROLE = AUTOMATED_INTELLIGENCE_A
 GRANT CREATE SNOWFLAKE INTELLIGENCE ON ACCOUNT TO ROLE AUTOMATED_INTELLIGENCE_ADMIN;
 GRANT CREATE DATABASE ON ACCOUNT TO ROLE AUTOMATED_INTELLIGENCE_ADMIN;
 GRANT CREATE WAREHOUSE ON ACCOUNT TO ROLE AUTOMATED_INTELLIGENCE_ADMIN;
+GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE ACCOUNTADMIN;
 
 -- ============================================================================
 -- DATA SCALE CONFIGURATION
@@ -799,7 +800,7 @@ ALTER TABLE orders ADD DATA METRIC FUNCTION
 
 -- Add NULL_COUNT DMFs to order_items table
 -- NOTE: Intentionally monitoring product_category instead of product_name (mis-attached)
--- This is a deliberate error for attendees to discover and fix in Section 7
+-- This is a deliberate error for attendees to discover and fix in the Data Quality section
 ALTER TABLE order_items ADD DATA METRIC FUNCTION 
   SNOWFLAKE.CORE.NULL_COUNT ON (order_item_id),
   SNOWFLAKE.CORE.NULL_COUNT ON (order_id),
@@ -1092,7 +1093,7 @@ COMMENT = 'Semantic layer for natural language business analytics queries'
 
 AI_VERIFIED_QUERIES (
     monthly_revenue_trend AS (
-        QUESTION 'Show me monthly revenue trend from June 2025 to April 2026'
+        QUESTION 'Show me monthly revenue trend from August to November 2026'
         VERIFIED_AT 1772645863
         ONBOARDING_QUESTION TRUE
         VERIFIED_BY '(STEWARD = dash)'
@@ -1100,8 +1101,8 @@ AI_VERIFIED_QUERIES (
                  DATE_TRUNC(''month'', o.order_date) AS month,
                  SUM(o.total_amount) AS total_revenue
              FROM orders AS o
-             WHERE o.order_date >= ''2025-06-01''
-               AND o.order_date < ''2026-05-01''
+             WHERE o.order_date >= ''2026-08-01''
+               AND o.order_date < ''2027-01-01''
              GROUP BY DATE_TRUNC(''month'', o.order_date)
              ORDER BY month'
     ),
@@ -1119,8 +1120,8 @@ AI_VERIFIED_QUERIES (
              GROUP BY c.state
              ORDER BY total_revenue DESC'
     ),
-    february_revenue_drop AS (
-        QUESTION 'What was the revenue in February 2026 compared to January 2026?'
+    october_revenue_comparison AS (
+        QUESTION 'What was the revenue in October 2026 compared to September 2026?'
         VERIFIED_AT 1772645863
         ONBOARDING_QUESTION FALSE
         VERIFIED_BY '(STEWARD = dash)'
@@ -1128,8 +1129,8 @@ AI_VERIFIED_QUERIES (
                  DATE_TRUNC(''month'', o.order_date) AS month,
                  SUM(o.total_amount) AS total_revenue
              FROM orders AS o
-             WHERE o.order_date >= ''2026-01-01''
-               AND o.order_date < ''2026-03-01''
+             WHERE o.order_date >= ''2026-09-01''
+               AND o.order_date < ''2026-11-01''
              GROUP BY DATE_TRUNC(''month'', o.order_date)
              ORDER BY month'
     )
@@ -1168,6 +1169,10 @@ CREATE OR REPLACE FILE FORMAT dash_automated_intelligence_db.raw.csv_format
 CREATE OR REPLACE STAGE dash_automated_intelligence_db.raw.hol_data_stage
     URL = 's3://sfquickstarts/summit_dev_day_2026_automated_intelligence_hol/'
     FILE_FORMAT = dash_automated_intelligence_db.raw.parquet_format;
+
+-- Suspend DTs before loading data to prevent them from refreshing with pre-shift dates
+ALTER DYNAMIC TABLE dash_automated_intelligence_db.dynamic_tables.enriched_orders SUSPEND;
+ALTER DYNAMIC TABLE dash_automated_intelligence_db.dynamic_tables.enriched_order_items SUSPEND;
 
 COPY INTO dash_automated_intelligence_db.raw.customers
 FROM @dash_automated_intelligence_db.raw.hol_data_stage/parquet/
@@ -1233,6 +1238,117 @@ PATTERN = '.*support_tickets\.csv'
 FORCE = TRUE;
 
 -- ============================================================================
+-- Shift dates forward 14 months (Jun-Sep 2025 → Aug-Dec 2026)
+-- Makes the dataset feel current for future HOL sessions
+-- ============================================================================
+UPDATE dash_automated_intelligence_db.raw.orders
+SET order_date = DATEADD(month, 14, order_date);
+
+UPDATE dash_automated_intelligence_db.raw.product_reviews
+SET review_date = DATEADD(month, 14, review_date);
+
+UPDATE dash_automated_intelligence_db.raw.support_tickets
+SET ticket_date = DATEADD(month, 14, ticket_date);
+
+-- Trim reviews/tickets that shifted beyond the order window (Aug-Nov 2026)
+DELETE FROM dash_automated_intelligence_db.raw.product_reviews WHERE review_date >= '2026-12-01';
+DELETE FROM dash_automated_intelligence_db.raw.support_tickets WHERE ticket_date >= '2026-12-01';
+
+-- Resume DTs now that source data has correct dates
+ALTER DYNAMIC TABLE dash_automated_intelligence_db.dynamic_tables.enriched_orders RESUME;
+ALTER DYNAMIC TABLE dash_automated_intelligence_db.dynamic_tables.enriched_order_items RESUME;
+
+-- ============================================================================
+-- Inject Product Affinity Patterns
+-- Purpose: Create realistic co-purchase patterns so product affinity models
+-- show meaningful "frequently bought together" relationships
+-- ============================================================================
+
+-- Ski gear affinity: Orders with Skis get Ski Boots swapped into an Accessories slot
+UPDATE dash_automated_intelligence_db.raw.order_items oi
+SET product_id = 1005, product_name = 'Ski Boots', product_category = 'Boots',
+    unit_price = 449.99, line_total = 449.99 * quantity
+FROM (
+    SELECT oi2.order_item_id
+    FROM dash_automated_intelligence_db.raw.order_items oi2
+    INNER JOIN dash_automated_intelligence_db.raw.order_items ski
+        ON oi2.order_id = ski.order_id AND ski.product_id IN (1001, 1002)
+    WHERE oi2.product_category = 'Accessories'
+      AND oi2.product_id NOT IN (1001, 1002, 1005)
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY oi2.order_id ORDER BY RANDOM()) = 1
+) matched
+WHERE oi.order_item_id = matched.order_item_id
+  AND RANDOM() < 0.4 * 2147483647;
+
+-- Snowboard gear affinity: Orders with Snowboards get Snowboard Boots swapped in
+UPDATE dash_automated_intelligence_db.raw.order_items oi
+SET product_id = 1006, product_name = 'Snowboard Boots', product_category = 'Boots',
+    unit_price = 349.99, line_total = 349.99 * quantity
+FROM (
+    SELECT oi2.order_item_id
+    FROM dash_automated_intelligence_db.raw.order_items oi2
+    INNER JOIN dash_automated_intelligence_db.raw.order_items sb
+        ON oi2.order_id = sb.order_id AND sb.product_id IN (1003, 1004)
+    WHERE oi2.product_category = 'Accessories'
+      AND oi2.product_id NOT IN (1003, 1004, 1006)
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY oi2.order_id ORDER BY RANDOM()) = 1
+) matched
+WHERE oi.order_item_id = matched.order_item_id
+  AND RANDOM() < 0.4 * 2147483647;
+
+-- ============================================================================
+-- Inject Customer Frequency Variation
+-- Purpose: Create purchase frequency variation so customer segmentation
+-- produces meaningful champions/loyal/at-risk segments (~1% champions,
+-- ~3% loyal, ~67% potential_loyalists, ~27% promising, ~2% lost)
+-- ============================================================================
+
+-- Champions: 5% of Premium customers (customer_id <= 100K) get 10 extra orders
+INSERT INTO dash_automated_intelligence_db.raw.orders
+    (order_id, customer_id, order_date, order_status, total_amount, discount_percent, shipping_cost)
+SELECT
+    UUID_STRING(),
+    c.customer_id,
+    DATEADD(day, UNIFORM(0, 117, RANDOM()), '2026-08-05'::DATE),
+    'Completed',
+    UNIFORM(500, 3000, RANDOM())::DECIMAL(10,2),
+    CASE WHEN RANDOM() > 0.9 * 2147483647 THEN UNIFORM(5, 10, RANDOM()) ELSE 0 END,
+    UNIFORM(5, 50, RANDOM())::DECIMAL(10,2)
+FROM dash_automated_intelligence_db.raw.customers c
+CROSS JOIN TABLE(GENERATOR(ROWCOUNT => 10)) g
+WHERE c.customer_segment = 'Premium'
+  AND c.customer_id <= 100000;
+
+-- Loyal: Standard customers (100K-300K) get 5 extra orders
+INSERT INTO dash_automated_intelligence_db.raw.orders
+    (order_id, customer_id, order_date, order_status, total_amount, discount_percent, shipping_cost)
+SELECT
+    UUID_STRING(),
+    c.customer_id,
+    DATEADD(day, UNIFORM(0, 117, RANDOM()), '2026-08-05'::DATE),
+    'Completed',
+    UNIFORM(100, 800, RANDOM())::DECIMAL(10,2),
+    CASE WHEN RANDOM() > 0.6 * 2147483647 THEN UNIFORM(5, 20, RANDOM()) ELSE 0 END,
+    UNIFORM(5, 50, RANDOM())::DECIMAL(10,2)
+FROM dash_automated_intelligence_db.raw.customers c
+CROSS JOIN TABLE(GENERATOR(ROWCOUNT => 5)) g
+WHERE c.customer_segment = 'Standard'
+  AND c.customer_id BETWEEN 100001 AND 300000;
+
+-- At-risk: cancel most orders for 2000 Basic customers
+UPDATE dash_automated_intelligence_db.raw.orders
+SET order_status = 'Cancelled'
+WHERE customer_id IN (
+    SELECT customer_id
+    FROM dash_automated_intelligence_db.raw.customers
+    WHERE customer_segment = 'Basic'
+    ORDER BY customer_id
+    LIMIT 2000
+)
+AND order_status != 'Cancelled'
+AND RANDOM() < 0.7 * 2147483647;
+
+-- ============================================================================
 -- Inject Data Quality Issues (intentional NULLs for DMF demo)
 -- Purpose: ~200 NULL values in monitored columns so DMFs detect violations
 -- ============================================================================
@@ -1262,7 +1378,7 @@ SET product_name = NULL
 FROM dash_automated_intelligence_db.raw.dq_bad_items_names b
 WHERE oi.order_item_id = b.order_item_id;
 
--- Fire the alert immediately so results are available by Section 7
+-- Fire the alert immediately so results are available by the Data Quality section
 -- NOTE: EXECUTE ALERT queries vw_dq_monitoring_results, which relies on DMF measurements
 -- from TRIGGER_ON_CHANGES being committed to SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS.
 -- That write is asynchronous and is not guaranteed to complete before EXECUTE ALERT runs,
@@ -1421,7 +1537,7 @@ GRANT SELECT ON SEMANTIC VIEW DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_A
 CREATE OR REPLACE USER west_coast_manager_user
     DEFAULT_ROLE = WEST_COAST_MANAGER
     DEFAULT_WAREHOUSE = HOL_WH
-    MUST_CHANGE_PASSWORD = TRUE
+    MUST_CHANGE_PASSWORD = FALSE
     COMMENT = 'Demo user for verifying Row Access Policies through the Business Insights Agent';
 
 GRANT ROLE WEST_COAST_MANAGER TO USER west_coast_manager_user;
@@ -1455,8 +1571,8 @@ CREATE OR REPLACE TABLE agent_evaluation_data (
 );
 
 INSERT INTO agent_evaluation_data
-SELECT 'Show me monthly revenue trend from June to September 2025',
-       PARSE_JSON('{"ground_truth_output": "The agent should query structured business data using the query_business_data tool to produce a monthly revenue breakdown. The response should include revenue figures for each month from June 2025 through September 2025."}')
+SELECT 'Show me monthly revenue trend from August to November 2026',
+       PARSE_JSON('{"ground_truth_output": "The agent should query structured business data using the query_business_data tool to produce a monthly revenue breakdown. The response should include revenue figures for each month from August 2026 through November 2026."}')
 UNION ALL SELECT 'Which month had the lowest revenue, and what do customer reviews say about that period?',
        PARSE_JSON('{"ground_truth_output": "The agent should use BOTH query_business_data and search_customer_feedback. The response should identify the lowest-revenue month from structured data and connect it to qualitative customer feedback from reviews or tickets during that period."}')
 UNION ALL SELECT 'Find reviews mentioning wrong size with a rating below 3',
