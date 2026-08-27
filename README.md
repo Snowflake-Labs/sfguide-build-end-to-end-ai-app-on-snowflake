@@ -46,11 +46,12 @@ A production-grade AI-powered retail analytics platform on Snowflake — from ra
 10. [Security and Governance](#security-and-governance)
 11. [Streamlit Dashboard](#streamlit-dashboard)
 12. [Agent Evaluation](#agent-evaluation)
-13. [MCP Server](#mcp-server)
-14. [Optional: Iceberg V3 Features](#optional-iceberg-v3-features)
-15. [Optional: Streaming Ingestion](#optional-streaming-ingestion)
-16. [Cleanup](#cleanup)
-17. [Resources](#resources)
+13. [Agent Observability](#agent-observability)
+14. [MCP Server](#mcp-server)
+15. [Optional: Iceberg V3 Features](#optional-iceberg-v3-features)
+16. [Optional: Streaming Ingestion](#optional-streaming-ingestion)
+17. [Cleanup](#cleanup)
+18. [Resources](#resources)
 
 ### How to Use This Guide
 
@@ -551,6 +552,47 @@ If questions score low on logical consistency:
 2. Look for vague reasoning about tool selection in the Planning step
 3. Update the agent's instructions to be more explicit
 4. Recreate the agent and re-run the evaluation
+
+---
+
+## Agent Observability
+
+[Agent Observability](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents#monitor-cortex-agent-requests) lets you inspect what happened inside every agent request — which model was used, how many tokens were consumed, which tools were called, and how the agent planned its response. This is essential for production cost monitoring and debugging.
+
+### View Reasoning Steps and Token Usage
+
+```sql
+-- See each planning/response step, model used, and token counts
+SELECT 
+    RECORD:name::STRING AS step,
+    RECORD_ATTRIBUTES:"snow.ai.observability.agent.planning.model"::STRING AS model,
+    RECORD_ATTRIBUTES:"snow.ai.observability.agent.planning.token_count.input"::INT AS input_tokens,
+    RECORD_ATTRIBUTES:"snow.ai.observability.agent.planning.token_count.output"::INT AS output_tokens,
+    TIMESTAMP
+FROM TABLE(SNOWFLAKE.LOCAL.GET_AI_OBSERVABILITY_EVENTS(
+    'DASH_AUTOMATED_INTELLIGENCE_DB', 'SEMANTIC', 'BUSINESS_INSIGHTS_AGENT', 'CORTEX AGENT'
+))
+WHERE RECORD:name::STRING LIKE 'ReasoningAgentStep%'
+ORDER BY TIMESTAMP DESC
+LIMIT 10;
+```
+
+### View Tool Calls
+
+```sql
+-- See which tools the agent invoked and when
+SELECT 
+    RECORD:name::STRING AS tool_event,
+    TIMESTAMP
+FROM TABLE(SNOWFLAKE.LOCAL.GET_AI_OBSERVABILITY_EVENTS(
+    'DASH_AUTOMATED_INTELLIGENCE_DB', 'SEMANTIC', 'BUSINESS_INSIGHTS_AGENT', 'CORTEX AGENT'
+))
+WHERE RECORD:name::STRING LIKE '%Tool%'
+ORDER BY TIMESTAMP DESC
+LIMIT 10;
+```
+
+You'll see the full trace: planning steps → tool selection (Cortex Analyst, Search, SQL execution) → chart generation → response. Use this to debug slow responses, understand token costs, and verify the agent is routing to the correct tools.
 
 ---
 
