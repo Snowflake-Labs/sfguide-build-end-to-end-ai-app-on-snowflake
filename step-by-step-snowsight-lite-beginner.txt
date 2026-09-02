@@ -1,0 +1,628 @@
+Step-by-Step Instructions (Lite — Beginner, ~60 minutes)
+
+Data to App in 8 steps. Everything runs from Snowsight + CoCo.
+No git clone, no Python files, no external dependencies.
+
+WHAT YOU'LL BUILD:
+  - A database with 10M+ orders, 2M customers, 10 products
+  - A 5-table Dynamic Tables pipeline (auto-refreshing)
+  - Data quality monitoring with intentional gaps to discover
+  - Cortex Search services over product catalog and customer feedback
+  - A Semantic View for natural-language SQL
+  - A Cortex Agent you can chat with in CoWork
+  - A Streamlit dashboard — all from a CoCo prompt
+
+PREREQUISITES
+-------------
+  [ ] ACCOUNTADMIN role access on your Snowflake account
+  [ ] Cortex AI functions enabled (default on most accounts)
+  [ ] Snowflake CoCo access via Snowsight Workspaces, CLI, or Desktop
+
+================================================================================
+STEP 1: SETUP (~10 minutes — run SQL in a Snowsight worksheet)
+================================================================================
+
+Copy-paste each part into a Snowsight SQL worksheet and run. Checkpoints
+between parts let you verify progress.
+
+--- PART A: Infrastructure + Tables + Pipeline + Search + Semantic View (< 1 min) ---
+
+USE ROLE ACCOUNTADMIN;
+GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE ACCOUNTADMIN;
+ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 1800;
+
+-- Database and schemas
+DROP DATABASE IF EXISTS dash_automated_intelligence_db CASCADE;
+CREATE DATABASE dash_automated_intelligence_db;
+USE DATABASE dash_automated_intelligence_db;
+
+CREATE SCHEMA IF NOT EXISTS raw;
+CREATE SCHEMA IF NOT EXISTS dynamic_tables;
+CREATE SCHEMA IF NOT EXISTS semantic;
+
+-- Warehouse
+CREATE OR REPLACE WAREHOUSE hol_wh
+  WITH WAREHOUSE_SIZE = 'MEDIUM'
+  AUTO_SUSPEND = 60
+  AUTO_RESUME = TRUE
+  INITIALLY_SUSPENDED = TRUE;
+
+USE SCHEMA raw;
+USE WAREHOUSE hol_wh;
+
+-- Raw tables
+CREATE OR REPLACE TABLE customers (
+    customer_id INT PRIMARY KEY,
+    first_name VARCHAR(50), last_name VARCHAR(50), email VARCHAR(100),
+    phone VARCHAR(20), address VARCHAR(200), city VARCHAR(50),
+    state VARCHAR(2), zip_code VARCHAR(10), registration_date DATE,
+    customer_segment VARCHAR(20)
+);
+
+CREATE OR REPLACE TABLE orders (
+    order_id VARCHAR(36) PRIMARY KEY,
+    customer_id INT, order_date TIMESTAMP, order_status VARCHAR(20),
+    total_amount DECIMAL(10,2), discount_percent DECIMAL(5,2), shipping_cost DECIMAL(8,2)
+);
+
+CREATE OR REPLACE TABLE order_items (
+    order_item_id VARCHAR(36) PRIMARY KEY,
+    order_id VARCHAR(36), product_id INT, product_name VARCHAR(100),
+    product_category VARCHAR(50), quantity INT, unit_price DECIMAL(10,2),
+    line_total DECIMAL(12,2)
+);
+
+CREATE TABLE IF NOT EXISTS product_catalog (
+    product_id INT PRIMARY KEY, product_name VARCHAR(100), product_category VARCHAR(50),
+    description TEXT, features TEXT, price DECIMAL(10,2), stock_quantity INT
+);
+
+CREATE TABLE IF NOT EXISTS product_reviews (
+    review_id INT AUTOINCREMENT PRIMARY KEY,
+    product_id INT, customer_id INT, review_date DATE, rating INT,
+    review_title VARCHAR(200), review_text TEXT, verified_purchase BOOLEAN
+);
+
+CREATE TABLE IF NOT EXISTS support_tickets (
+    ticket_id INT AUTOINCREMENT PRIMARY KEY,
+    customer_id INT, ticket_date TIMESTAMP_NTZ, category VARCHAR(50),
+    priority VARCHAR(20), subject VARCHAR(200), description TEXT,
+    resolution TEXT, status VARCHAR(20)
+);
+
+-- Dynamic Tables pipeline (3 tiers)
+USE SCHEMA dynamic_tables;
+
+CREATE OR REPLACE DYNAMIC TABLE enriched_orders
+TARGET_LAG = '1 minute' WAREHOUSE = hol_wh INITIALIZE = ON_SCHEDULE REFRESH_MODE = INCREMENTAL
+AS
+SELECT o.order_id, o.customer_id, o.order_date, o.order_status,
+    DATE(o.order_date) AS order_date_only, YEAR(o.order_date) AS order_year,
+    QUARTER(o.order_date) AS order_quarter, MONTH(o.order_date) AS order_month,
+    DAYOFWEEK(o.order_date) AS order_day_of_week, DAYNAME(o.order_date) AS order_day_name,
+    WEEK(o.order_date) AS order_week, o.total_amount, o.discount_percent, o.shipping_cost,
+    ROUND(o.total_amount * (o.discount_percent / 100), 2) AS discount_amount,
+    ROUND(o.total_amount - (o.total_amount * (o.discount_percent / 100)), 2) AS net_amount,
+    ROUND(o.total_amount - (o.total_amount * (o.discount_percent / 100)) + o.shipping_cost, 2) AS final_amount,
+    CASE WHEN o.discount_percent > 0 THEN TRUE ELSE FALSE END AS has_discount,
+    CASE WHEN o.discount_percent = 0 THEN 'No Discount' WHEN o.discount_percent <= 10 THEN 'Low Discount'
+         WHEN o.discount_percent <= 20 THEN 'Medium Discount' ELSE 'High Discount' END AS discount_tier,
+    CASE WHEN o.total_amount < 100 THEN 'Small' WHEN o.total_amount < 500 THEN 'Medium'
+         WHEN o.total_amount < 2000 THEN 'Large' ELSE 'Extra Large' END AS order_size_category
+FROM dash_automated_intelligence_db.raw.orders o;
+
+CREATE OR REPLACE DYNAMIC TABLE enriched_order_items
+TARGET_LAG = '1 minute' WAREHOUSE = hol_wh INITIALIZE = ON_SCHEDULE REFRESH_MODE = INCREMENTAL
+AS
+SELECT oi.order_item_id, oi.order_id, oi.product_id, oi.product_name, oi.product_category,
+    oi.quantity, oi.unit_price, oi.line_total,
+    ROUND(oi.line_total / oi.quantity, 2) AS actual_unit_price,
+    ROUND(oi.unit_price - (oi.line_total / oi.quantity), 2) AS unit_price_variance,
+    CASE WHEN oi.product_category = 'Skis' THEN TRUE ELSE FALSE END AS is_skis,
+    CASE WHEN oi.product_category = 'Snowboards' THEN TRUE ELSE FALSE END AS is_snowboards,
+    CASE WHEN oi.quantity = 1 THEN 'Single' WHEN oi.quantity <= 3 THEN 'Few' ELSE 'Bulk' END AS quantity_tier
+FROM dash_automated_intelligence_db.raw.order_items oi;
+
+CREATE OR REPLACE DYNAMIC TABLE fact_orders
+TARGET_LAG = DOWNSTREAM WAREHOUSE = hol_wh INITIALIZE = ON_SCHEDULE REFRESH_MODE = INCREMENTAL
+AS
+SELECT eo.order_id, eo.customer_id, eo.order_date, eo.order_date_only, eo.order_year,
+    eo.order_quarter, eo.order_month, eo.order_day_of_week, eo.order_day_name, eo.order_week,
+    eo.order_status, eo.total_amount, eo.discount_percent, eo.discount_amount, eo.net_amount,
+    eo.shipping_cost, eo.final_amount, eo.has_discount, eo.discount_tier, eo.order_size_category,
+    eoi.order_item_id, eoi.product_id, eoi.product_name, eoi.product_category, eoi.quantity,
+    eoi.unit_price, eoi.line_total, eoi.actual_unit_price, eoi.unit_price_variance,
+    eoi.is_skis, eoi.is_snowboards, eoi.quantity_tier,
+    COUNT(eoi.order_item_id) OVER (PARTITION BY eo.order_id) AS items_per_order,
+    SUM(eoi.line_total) OVER (PARTITION BY eo.order_id) AS order_items_total
+FROM dash_automated_intelligence_db.dynamic_tables.enriched_orders eo
+INNER JOIN dash_automated_intelligence_db.dynamic_tables.enriched_order_items eoi ON eo.order_id = eoi.order_id;
+
+CREATE OR REPLACE DYNAMIC TABLE daily_business_metrics
+TARGET_LAG = DOWNSTREAM WAREHOUSE = hol_wh INITIALIZE = ON_SCHEDULE REFRESH_MODE = INCREMENTAL
+AS
+SELECT order_date_only, order_year, order_quarter, order_month, order_week, order_day_name,
+    COUNT(DISTINCT order_id) AS total_orders, COUNT(DISTINCT customer_id) AS unique_customers,
+    AVG(items_per_order) AS avg_items_per_order, SUM(total_amount) AS total_revenue,
+    SUM(net_amount) AS total_net_revenue, SUM(discount_amount) AS total_discounts,
+    SUM(shipping_cost) AS total_shipping, SUM(final_amount) AS total_final_revenue,
+    AVG(final_amount) AS avg_order_value,
+    COUNT(DISTINCT CASE WHEN has_discount THEN order_id END) AS orders_with_discount,
+    ROUND(COUNT(DISTINCT CASE WHEN has_discount THEN order_id END)::DECIMAL / COUNT(DISTINCT order_id) * 100, 2) AS discount_penetration_pct,
+    AVG(CASE WHEN has_discount THEN discount_percent END) AS avg_discount_percent,
+    COUNT(DISTINCT CASE WHEN order_size_category = 'Small' THEN order_id END) AS small_orders,
+    COUNT(DISTINCT CASE WHEN order_size_category = 'Medium' THEN order_id END) AS medium_orders,
+    COUNT(DISTINCT CASE WHEN order_size_category = 'Large' THEN order_id END) AS large_orders,
+    COUNT(DISTINCT CASE WHEN order_size_category = 'Extra Large' THEN order_id END) AS extra_large_orders
+FROM dash_automated_intelligence_db.dynamic_tables.fact_orders
+GROUP BY order_date_only, order_year, order_quarter, order_month, order_week, order_day_name;
+
+CREATE OR REPLACE DYNAMIC TABLE product_performance_metrics
+TARGET_LAG = DOWNSTREAM WAREHOUSE = hol_wh INITIALIZE = ON_SCHEDULE REFRESH_MODE = INCREMENTAL
+AS
+SELECT product_category,
+    COUNT(DISTINCT order_id) AS orders_count, COUNT(order_item_id) AS items_sold,
+    SUM(quantity) AS total_quantity_sold, SUM(line_total) AS total_revenue,
+    AVG(unit_price) AS avg_unit_price, AVG(quantity) AS avg_quantity_per_order,
+    AVG(line_total) AS avg_line_total, MIN(unit_price) AS min_unit_price, MAX(unit_price) AS max_unit_price,
+    SUM(CASE WHEN is_skis THEN 1 ELSE 0 END) AS ski_items,
+    SUM(CASE WHEN is_snowboards THEN 1 ELSE 0 END) AS snowboard_items,
+    COUNT(CASE WHEN quantity_tier = 'Single' THEN 1 END) AS single_item_orders,
+    COUNT(CASE WHEN quantity_tier = 'Few' THEN 1 END) AS few_item_orders,
+    COUNT(CASE WHEN quantity_tier = 'Bulk' THEN 1 END) AS bulk_orders
+FROM dash_automated_intelligence_db.dynamic_tables.fact_orders
+GROUP BY product_category;
+
+-- Data quality monitoring
+USE SCHEMA raw;
+
+ALTER TABLE orders SET DATA_METRIC_SCHEDULE = 'TRIGGER_ON_CHANGES';
+ALTER TABLE order_items SET DATA_METRIC_SCHEDULE = 'TRIGGER_ON_CHANGES';
+
+ALTER TABLE orders ADD DATA METRIC FUNCTION
+  SNOWFLAKE.CORE.NULL_COUNT ON (order_id), SNOWFLAKE.CORE.NULL_COUNT ON (customer_id),
+  SNOWFLAKE.CORE.NULL_COUNT ON (order_date), SNOWFLAKE.CORE.NULL_COUNT ON (total_amount);
+
+-- NOTE: Intentionally monitoring product_category instead of product_name (gap for users to find)
+ALTER TABLE order_items ADD DATA METRIC FUNCTION
+  SNOWFLAKE.CORE.NULL_COUNT ON (order_item_id), SNOWFLAKE.CORE.NULL_COUNT ON (order_id),
+  SNOWFLAKE.CORE.NULL_COUNT ON (product_id), SNOWFLAKE.CORE.NULL_COUNT ON (product_category),
+  SNOWFLAKE.CORE.NULL_COUNT ON (quantity), SNOWFLAKE.CORE.NULL_COUNT ON (unit_price);
+
+CREATE OR REPLACE VIEW vw_dq_monitoring_results AS
+SELECT * FROM SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS
+WHERE table_database = 'DASH_AUTOMATED_INTELLIGENCE_DB' AND table_schema = 'RAW'
+  AND table_name IN ('ORDERS', 'ORDER_ITEMS');
+
+-- Product catalog seed data
+MERGE INTO product_catalog t
+USING (SELECT * FROM (VALUES
+  (1001,'Powder Skis','Skis','Premium powder skis for deep snow. Wide waist, rockered tip.','Wide waist (115mm), Rockered tip/tail, Carbon fiber, Lightweight',799.99,15),
+  (1002,'All-Mountain Skis','Skis','Versatile all-mountain skis for any terrain.','Medium waist (88mm), Progressive sidecut, Titanal reinforcement',649.99,25),
+  (1003,'Freestyle Snowboard','Snowboards','Twin-tip freestyle snowboard for park and pipe.','True twin shape, Soft flex, Sintered base, Pop-optimized core',549.99,20),
+  (1004,'Freeride Snowboard','Snowboards','Directional freeride board for variable conditions.','Directional shape, Stiff flex, Carbon stringers, Powder nose',699.99,12),
+  (1005,'Ski Boots','Boots','High-performance alpine ski boots with customizable fit.','130 flex, GripWalk soles, Heat-moldable liner, Walk mode',449.99,30),
+  (1006,'Snowboard Boots','Boots','Comfortable snowboard boots with Boa lacing.','Boa lacing, Medium flex, Heat-moldable liner, Vibram outsole',349.99,35),
+  (1007,'Ski Poles','Accessories','Lightweight aluminum ski poles with ergonomic grips.','Aluminum, Adjustable length (105-135cm), Powder baskets',79.99,50),
+  (1008,'Ski Goggles','Accessories','Anti-fog goggles with interchangeable lenses.','Anti-fog, UV protection, Interchangeable lenses, Helmet compatible',149.99,40),
+  (1009,'Snowboard Bindings','Accessories','Responsive bindings with tool-free adjustment.','Tool-free adjustment, Canted footbeds, Universal disk',249.99,28),
+  (1010,'Ski Helmet','Accessories','Safety-certified helmet with integrated audio.','MIPS protection, Audio-ready, Adjustable vents, Goggle clip',179.99,45)
+) AS s(product_id, product_name, product_category, description, features, price, stock_quantity)) s
+ON t.product_id = s.product_id
+WHEN MATCHED THEN UPDATE SET product_name=s.product_name, product_category=s.product_category, description=s.description, features=s.features, price=s.price, stock_quantity=s.stock_quantity
+WHEN NOT MATCHED THEN INSERT VALUES (s.product_id, s.product_name, s.product_category, s.description, s.features, s.price, s.stock_quantity);
+
+-- Cortex Search Services
+ALTER TABLE product_catalog SET CHANGE_TRACKING = TRUE;
+ALTER TABLE product_reviews SET CHANGE_TRACKING = TRUE;
+ALTER TABLE support_tickets SET CHANGE_TRACKING = TRUE;
+
+CREATE OR REPLACE CORTEX SEARCH SERVICE product_search_service
+  ON description
+  ATTRIBUTES product_id, product_name, product_category, features, price
+  WAREHOUSE = hol_wh TARGET_LAG = '1 hour'
+  AS (SELECT product_id, product_name, product_category, description, features, price, stock_quantity FROM product_catalog);
+
+CREATE OR REPLACE VIEW customer_feedback AS
+SELECT CAST(review_id AS VARCHAR) AS doc_id, review_title AS title, review_text AS content,
+    'review' AS source_type, CAST(NULL AS VARCHAR(50)) AS category, rating, review_date AS date_field, customer_id
+FROM product_reviews
+UNION ALL
+SELECT CAST(ticket_id AS VARCHAR), subject, description, 'ticket', category, CAST(NULL AS INT), ticket_date::DATE, customer_id
+FROM support_tickets;
+
+CREATE OR REPLACE CORTEX SEARCH SERVICE customer_feedback_search
+  TEXT INDEXES title, doc_id
+  VECTOR INDEXES content (model = 'snowflake-arctic-embed-l-v2.0')
+  ATTRIBUTES source_type, category, rating, date_field, customer_id
+  WAREHOUSE = hol_wh TARGET_LAG = '1 hour'
+AS (SELECT doc_id, title, content, source_type, category, rating, date_field, customer_id FROM customer_feedback);
+
+-- Semantic View
+USE SCHEMA semantic;
+
+CREATE OR REPLACE SEMANTIC VIEW business_analytics_semantic
+TABLES (
+    orders AS dash_automated_intelligence_db.raw.orders PRIMARY KEY (order_id)
+        WITH SYNONYMS = ('sales', 'transactions', 'purchases') COMMENT = 'Customer orders with amounts and status',
+    customers AS dash_automated_intelligence_db.raw.customers PRIMARY KEY (customer_id)
+        WITH SYNONYMS = ('buyers', 'clients', 'users') COMMENT = 'Customer master data with segments',
+    items AS dash_automated_intelligence_db.raw.order_items PRIMARY KEY (order_item_id)
+        WITH SYNONYMS = ('line_items', 'order_details') COMMENT = 'Individual items within each order'
+)
+RELATIONSHIPS (orders (customer_id) REFERENCES customers, items (order_id) REFERENCES orders)
+FACTS (
+    orders.total_amount AS total_amount WITH SYNONYMS = ('order_value', 'sale_amount', 'revenue') COMMENT = 'Total monetary value of the order',
+    items.quantity AS quantity WITH SYNONYMS = ('qty', 'units') COMMENT = 'Number of units ordered',
+    items.unit_price AS unit_price WITH SYNONYMS = ('price', 'cost') COMMENT = 'Price per unit',
+    items.line_total AS line_total WITH SYNONYMS = ('item_total', 'line_amount') COMMENT = 'Total value of the line item'
+)
+DIMENSIONS (
+    orders.order_status AS order_status WITH SYNONYMS = ('status', 'state') COMMENT = 'Current status of the order',
+    orders.order_date AS order_date WITH SYNONYMS = ('date', 'purchase_date') COMMENT = 'Date when order was placed',
+    customers.customer_segment AS customer_segment WITH SYNONYMS = ('segment', 'tier') COMMENT = 'Customer classification tier',
+    customers.first_name AS first_name COMMENT = 'Customer first name',
+    customers.last_name AS last_name COMMENT = 'Customer last name',
+    customers.state AS state WITH SYNONYMS = ('region', 'location') COMMENT = 'US state where the customer is located',
+    items.product_category AS product_category WITH SYNONYMS = ('category', 'product_type') COMMENT = 'Product category classification'
+)
+METRICS (
+    orders.total_revenue AS SUM(total_amount) WITH SYNONYMS = ('revenue', 'sales') COMMENT = 'Sum of all order amounts',
+    orders.order_count AS COUNT(DISTINCT orders.order_id) WITH SYNONYMS = ('number_of_orders') COMMENT = 'Count of unique orders',
+    customers.customer_count AS COUNT(DISTINCT customers.customer_id) WITH SYNONYMS = ('number_of_customers') COMMENT = 'Count of unique customers',
+    orders.average_order_value AS AVG(total_amount) WITH SYNONYMS = ('aov') COMMENT = 'Average monetary value per order',
+    items.total_items_revenue AS SUM(line_total) WITH SYNONYMS = ('item_revenue') COMMENT = 'Sum of all line item totals'
+)
+COMMENT = 'Semantic layer for natural language business analytics queries'
+AI_VERIFIED_QUERIES (
+    monthly_revenue_trend AS (
+        QUESTION 'Show me monthly revenue trend from August to November 2026'
+        VERIFIED_AT 1772645863 ONBOARDING_QUESTION TRUE VERIFIED_BY '(STEWARD = dash)'
+        SQL 'SELECT DATE_TRUNC(''month'', o.order_date) AS month, SUM(o.total_amount) AS total_revenue FROM orders AS o WHERE o.order_date >= ''2026-08-01'' AND o.order_date < ''2027-01-01'' GROUP BY DATE_TRUNC(''month'', o.order_date) ORDER BY month'
+    ),
+    revenue_and_customers_by_state AS (
+        QUESTION 'What is our total revenue and customer count by state?'
+        VERIFIED_AT 1772645863 ONBOARDING_QUESTION TRUE VERIFIED_BY '(STEWARD = dash)'
+        SQL 'SELECT c.state, SUM(o.total_amount) AS total_revenue, COUNT(DISTINCT c.customer_id) AS customer_count FROM orders AS o JOIN customers AS c ON o.customer_id = c.customer_id GROUP BY c.state ORDER BY total_revenue DESC'
+    )
+);
+
+-- *** STOP — Run everything above, then run this checkpoint: ***
+-- CHECKPOINT: Verify Part A
+SELECT 'schemas' AS check_type, COUNT(*) AS count FROM INFORMATION_SCHEMA.SCHEMATA WHERE CATALOG_NAME = 'DASH_AUTOMATED_INTELLIGENCE_DB'
+UNION ALL SELECT 'raw_tables', (SELECT COUNT(*) FROM DASH_AUTOMATED_INTELLIGENCE_DB.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'RAW' AND TABLE_TYPE = 'BASE TABLE')
+UNION ALL SELECT 'dynamic_tables', (SELECT COUNT(*) FROM TABLE(DASH_AUTOMATED_INTELLIGENCE_DB.INFORMATION_SCHEMA.DYNAMIC_TABLES()));
+-- Expected: ~5 schemas (PUBLIC, RAW, DYNAMIC_TABLES, SEMANTIC, INFORMATION_SCHEMA), 6+ raw tables, 5 dynamic tables
+-- Tables will have 0 rows (data loads in Part B)
+
+
+--- PART B: Seed Data Load (~3 min, timeout-sensitive) ---
+
+USE ROLE ACCOUNTADMIN;
+USE DATABASE dash_automated_intelligence_db;
+USE WAREHOUSE hol_wh;
+
+CREATE OR REPLACE FILE FORMAT raw.parquet_format TYPE = 'PARQUET';
+CREATE OR REPLACE FILE FORMAT raw.csv_format TYPE = 'CSV' SKIP_HEADER = 1 FIELD_OPTIONALLY_ENCLOSED_BY = '"' NULL_IF = ('');
+CREATE OR REPLACE STAGE raw.hol_data_stage URL = 's3://sfquickstarts/summit_dev_day_2026_automated_intelligence_hol/' FILE_FORMAT = raw.parquet_format;
+
+ALTER DYNAMIC TABLE dynamic_tables.enriched_orders SUSPEND;
+ALTER DYNAMIC TABLE dynamic_tables.enriched_order_items SUSPEND;
+
+COPY INTO raw.customers FROM @raw.hol_data_stage/parquet/ FILE_FORMAT = (FORMAT_NAME = 'raw.parquet_format') PATTERN = '.*customers.*\.parquet' MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE FORCE = TRUE;
+COPY INTO raw.orders FROM @raw.hol_data_stage/parquet/ FILE_FORMAT = (FORMAT_NAME = 'raw.parquet_format') PATTERN = '.*orders_00[12]\.parquet' MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE FORCE = TRUE;
+COPY INTO raw.order_items FROM @raw.hol_data_stage/parquet/ FILE_FORMAT = (FORMAT_NAME = 'raw.parquet_format') PATTERN = '.*order_items_00[12]\.parquet' MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE FORCE = TRUE;
+COPY INTO raw.product_reviews FROM @raw.hol_data_stage/ FILE_FORMAT = (FORMAT_NAME = 'raw.csv_format') PATTERN = '.*product_reviews\.csv' FORCE = TRUE;
+COPY INTO raw.support_tickets FROM @raw.hol_data_stage/ FILE_FORMAT = (FORMAT_NAME = 'raw.csv_format') PATTERN = '.*support_tickets\.csv' FORCE = TRUE;
+
+-- CHECKPOINT: Verify Part B
+SELECT 'customers' AS tbl, COUNT(*) AS rows FROM raw.customers
+UNION ALL SELECT 'orders', COUNT(*) FROM raw.orders
+UNION ALL SELECT 'order_items', COUNT(*) FROM raw.order_items
+UNION ALL SELECT 'product_reviews', COUNT(*) FROM raw.product_reviews
+UNION ALL SELECT 'support_tickets', COUNT(*) FROM raw.support_tickets;
+-- Expected: ~2M customers, ~10M orders, ~25M order_items, ~1200 reviews, ~1200 tickets
+
+
+--- PART C: Data Enrichment + Pipeline Refresh (~3 min, timeout-sensitive) ---
+
+USE ROLE ACCOUNTADMIN;
+USE DATABASE dash_automated_intelligence_db;
+USE WAREHOUSE hol_wh;
+
+-- Shift dates to current period
+UPDATE raw.orders SET order_date = DATEADD(month, 14, order_date);
+UPDATE raw.product_reviews SET review_date = DATEADD(month, 14, review_date);
+UPDATE raw.support_tickets SET ticket_date = DATEADD(month, 14, ticket_date);
+DELETE FROM raw.product_reviews WHERE review_date >= '2026-12-01';
+DELETE FROM raw.support_tickets WHERE ticket_date >= '2026-12-01';
+
+-- Resume pipeline
+ALTER DYNAMIC TABLE dynamic_tables.enriched_orders RESUME;
+ALTER DYNAMIC TABLE dynamic_tables.enriched_order_items RESUME;
+
+-- Product affinity patterns (ski + boot combos)
+UPDATE raw.order_items oi SET product_id = 1005, product_name = 'Ski Boots', product_category = 'Boots', unit_price = 449.99, line_total = 449.99 * quantity
+FROM (SELECT oi2.order_item_id FROM raw.order_items oi2 INNER JOIN raw.order_items ski ON oi2.order_id = ski.order_id AND ski.product_id IN (1001, 1002) WHERE oi2.product_category = 'Accessories' AND oi2.product_id NOT IN (1001, 1002, 1005) QUALIFY ROW_NUMBER() OVER (PARTITION BY oi2.order_id ORDER BY RANDOM()) = 1) matched
+WHERE oi.order_item_id = matched.order_item_id AND RANDOM() < 0.4 * 2147483647;
+
+UPDATE raw.order_items oi SET product_id = 1006, product_name = 'Snowboard Boots', product_category = 'Boots', unit_price = 349.99, line_total = 349.99 * quantity
+FROM (SELECT oi2.order_item_id FROM raw.order_items oi2 INNER JOIN raw.order_items sb ON oi2.order_id = sb.order_id AND sb.product_id IN (1003, 1004) WHERE oi2.product_category = 'Accessories' AND oi2.product_id NOT IN (1003, 1004, 1006) QUALIFY ROW_NUMBER() OVER (PARTITION BY oi2.order_id ORDER BY RANDOM()) = 1) matched
+WHERE oi.order_item_id = matched.order_item_id AND RANDOM() < 0.4 * 2147483647;
+
+-- Customer frequency variation
+INSERT INTO raw.orders (order_id, customer_id, order_date, order_status, total_amount, discount_percent, shipping_cost)
+SELECT UUID_STRING(), c.customer_id, DATEADD(day, UNIFORM(0, 117, RANDOM()), '2026-08-05'::DATE), 'Completed', UNIFORM(500, 3000, RANDOM())::DECIMAL(10,2), CASE WHEN RANDOM() > 0.9 * 2147483647 THEN UNIFORM(5, 10, RANDOM()) ELSE 0 END, UNIFORM(5, 50, RANDOM())::DECIMAL(10,2)
+FROM raw.customers c CROSS JOIN TABLE(GENERATOR(ROWCOUNT => 10)) g WHERE c.customer_segment = 'Premium' AND c.customer_id <= 100000;
+
+INSERT INTO raw.orders (order_id, customer_id, order_date, order_status, total_amount, discount_percent, shipping_cost)
+SELECT UUID_STRING(), c.customer_id, DATEADD(day, UNIFORM(0, 117, RANDOM()), '2026-08-05'::DATE), 'Completed', UNIFORM(100, 800, RANDOM())::DECIMAL(10,2), CASE WHEN RANDOM() > 0.6 * 2147483647 THEN UNIFORM(5, 20, RANDOM()) ELSE 0 END, UNIFORM(5, 50, RANDOM())::DECIMAL(10,2)
+FROM raw.customers c CROSS JOIN TABLE(GENERATOR(ROWCOUNT => 5)) g WHERE c.customer_segment = 'Standard' AND c.customer_id BETWEEN 100001 AND 300000;
+
+UPDATE raw.orders SET order_status = 'Cancelled'
+WHERE customer_id IN (SELECT customer_id FROM raw.customers WHERE customer_segment = 'Basic' ORDER BY customer_id LIMIT 2000)
+  AND order_status != 'Cancelled' AND RANDOM() < 0.7 * 2147483647;
+
+-- Intentional data quality issues (NULLs for Step 3 discovery)
+CREATE OR REPLACE TEMPORARY TABLE raw.dq_bad_orders AS SELECT order_id FROM raw.orders SAMPLE (200 ROWS);
+UPDATE raw.orders o SET total_amount = NULL FROM raw.dq_bad_orders b WHERE o.order_id = b.order_id;
+CREATE OR REPLACE TEMPORARY TABLE raw.dq_bad_items AS SELECT order_item_id FROM raw.order_items SAMPLE (200 ROWS);
+UPDATE raw.order_items oi SET quantity = NULL FROM raw.dq_bad_items b WHERE oi.order_item_id = b.order_item_id;
+CREATE OR REPLACE TEMPORARY TABLE raw.dq_bad_items_names AS SELECT order_item_id FROM raw.order_items SAMPLE (150 ROWS);
+UPDATE raw.order_items oi SET product_name = NULL FROM raw.dq_bad_items_names b WHERE oi.order_item_id = b.order_item_id;
+
+-- Refresh pipelines
+ALTER DYNAMIC TABLE dynamic_tables.enriched_orders REFRESH;
+ALTER DYNAMIC TABLE dynamic_tables.enriched_order_items REFRESH;
+ALTER DYNAMIC TABLE dynamic_tables.fact_orders REFRESH;
+ALTER DYNAMIC TABLE dynamic_tables.daily_business_metrics REFRESH;
+ALTER DYNAMIC TABLE dynamic_tables.product_performance_metrics REFRESH;
+
+ALTER CORTEX SEARCH SERVICE raw.product_search_service REFRESH;
+ALTER CORTEX SEARCH SERVICE raw.customer_feedback_search REFRESH;
+
+-- CHECKPOINT: Verify Part C
+SELECT MIN(order_date)::DATE AS earliest, MAX(order_date)::DATE AS latest FROM raw.orders;
+-- Expected: dates in Aug-Nov 2026
+SELECT NAME, SCHEDULING_STATE FROM TABLE(INFORMATION_SCHEMA.DYNAMIC_TABLES()) WHERE SCHEMA_NAME = 'DYNAMIC_TABLES';
+-- Expected: all 5 DTs in ACTIVE state
+
+
+STEP 1 FINAL CHECKPOINT:
+
+SELECT 'customers' AS tbl, COUNT(*) AS rows FROM raw.customers
+UNION ALL SELECT 'orders', COUNT(*) FROM raw.orders
+UNION ALL SELECT 'order_items', COUNT(*) FROM raw.order_items
+UNION ALL SELECT 'product_reviews', COUNT(*) FROM raw.product_reviews
+UNION ALL SELECT 'support_tickets', COUNT(*) FROM raw.support_tickets
+UNION ALL SELECT 'product_catalog', COUNT(*) FROM raw.product_catalog;
+
+SHOW CORTEX SEARCH SERVICES IN SCHEMA RAW;
+SHOW SEMANTIC VIEWS IN SCHEMA SEMANTIC;
+
+
+================================================================================
+STEP 2: EXPLORE YOUR DATA (~5 min — CoCo prompts)
+================================================================================
+
+Prompt CoCo:
+
+  "What schemas and tables are in my database?"
+
+  "Show me 5 sample rows from the orders table"
+
+  "How many orders, customers, and products do we have?"
+
+  "What's the date range of our order data?"
+
+CHECKPOINT: You should see ~10M orders, ~25M order_items, 2M customers, 10 products,
+~1200 reviews, ~1200 tickets. Dates should span August to November 2026.
+
+
+================================================================================
+STEP 3: DATA QUALITY (~5 min — CoCo prompts)
+================================================================================
+
+Prompt CoCo:
+
+  "Check the data quality monitoring results and show me which columns have NULL violations"
+
+  "Are there any NULL values in order_items.product_name? Is that column being monitored?"
+
+  "Fix the DMF -- remove the NULL check from product_category and add it to product_name instead"
+
+CHECKPOINT: After fixing, product_name should now be monitored. Verify:
+  SHOW DATA METRIC FUNCTIONS ON TABLE dash_automated_intelligence_db.raw.order_items;
+
+
+================================================================================
+STEP 4: DYNAMIC TABLES PIPELINE (~5 min — CoCo prompts)
+================================================================================
+
+Prompt CoCo:
+
+  "Show me the Dynamic Tables pipeline status -- names, target lag, last refresh time, and row counts for each tier"
+
+  "Show me a sample of the daily business metrics -- top 5 days by revenue"
+
+CHECKPOINT: You should see 5 Dynamic Tables (enriched_orders, enriched_order_items,
+fact_orders, daily_business_metrics, product_performance_metrics). Top revenue days
+should be in November 2026 (~$183M each).
+
+
+================================================================================
+STEP 5: CREATE AGENT (~5 min — run SQL in a Snowsight worksheet)
+================================================================================
+
+The Semantic View and Cortex Search Services were created in Step 1.
+Run this SQL to create the agent:
+
+USE ROLE ACCOUNTADMIN;
+USE DATABASE DASH_AUTOMATED_INTELLIGENCE_DB;
+USE SCHEMA SEMANTIC;
+USE WAREHOUSE HOL_WH;
+
+CREATE OR REPLACE AGENT BUSINESS_INSIGHTS_AGENT
+  COMMENT = 'Multi-tool business insights agent'
+FROM SPECIFICATION $$
+{
+  "instructions": {
+    "orchestration": "You are a business insights assistant for an outdoor sports equipment company. TOOL ROUTING: (1) query_business_data: revenue, orders, customers, metrics, trends. (2) search_customer_feedback: reviews, ratings, tickets, complaints. (3) search_products: product details, features, pricing. (4) COMBINE: when user asks WHY, use text-to-SQL first then search.",
+    "response": "Be concise and data-driven. Cite specific numbers. Format currency with $ and two decimals.",
+    "sample_questions": [
+      {"question": "Show me monthly revenue trend from August to November 2026"},
+      {"question": "Which month had the lowest revenue, and what do customer reviews say about that period?"},
+      {"question": "Find reviews mentioning wrong size with a rating below 3"},
+      {"question": "Why are customers returning ski boots?"},
+      {"question": "What is our total revenue and customer count by state?"},
+      {"question": "What are the top complaint themes in support tickets?"},
+      {"question": "How many reviews mention sizing issues, and which products are most affected?"}
+    ]
+  },
+  "tools": [
+    {"tool_spec": {"type": "cortex_analyst_text_to_sql", "name": "query_business_data", "description": "Query structured business data. Covers orders, revenue, customers, segments, products, discounts."}},
+    {"tool_spec": {"type": "cortex_search", "name": "search_customer_feedback", "description": "Search reviews and support tickets. Always use persist_to_table."}},
+    {"tool_spec": {"type": "cortex_search", "name": "search_products", "description": "Search product catalog for details, features, pricing."}}
+  ],
+  "tool_resources": {
+    "query_business_data": {
+      "semantic_view": "DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_ANALYTICS_SEMANTIC",
+      "execution_environment": {"type": "warehouse", "warehouse": "HOL_WH"}
+    },
+    "search_customer_feedback": {
+      "search_service": "DASH_AUTOMATED_INTELLIGENCE_DB.RAW.CUSTOMER_FEEDBACK_SEARCH",
+      "database_schema": "DASH_AUTOMATED_INTELLIGENCE_DB.RAW",
+      "is_multi_index": true,
+      "columns_and_descriptions": {
+        "doc_id": {"description": "Unique document ID", "type": "TEXT", "searchable": false, "filterable": false},
+        "title": {"description": "Review title or ticket subject", "type": "TEXT", "searchable": true, "filterable": false},
+        "content": {"description": "Full text of review or ticket", "type": "TEXT", "searchable": true, "filterable": false},
+        "source_type": {"description": "review or ticket", "type": "TEXT", "searchable": false, "filterable": true},
+        "category": {"description": "Ticket category (null for reviews)", "type": "TEXT", "searchable": false, "filterable": true},
+        "rating": {"description": "Review star rating 1-5 (null for tickets)", "type": "NUMBER", "searchable": false, "filterable": true},
+        "date_field": {"description": "Date posted or created", "type": "DATE", "searchable": false, "filterable": true},
+        "customer_id": {"description": "Customer ID", "type": "NUMBER", "searchable": false, "filterable": true}
+      },
+      "max_results": 1000,
+      "execution_environment": {"type": "warehouse", "warehouse": "HOL_WH"},
+      "id_column": "DOC_ID",
+      "base_table": "DASH_AUTOMATED_INTELLIGENCE_DB.RAW.CUSTOMER_FEEDBACK",
+      "base_table_columns": ["doc_id", "title", "content", "source_type", "category", "rating", "date_field", "customer_id"]
+    },
+    "search_products": {
+      "search_service": "DASH_AUTOMATED_INTELLIGENCE_DB.RAW.PRODUCT_SEARCH_SERVICE",
+      "id_column": "PRODUCT_ID", "title_column": "PRODUCT_NAME",
+      "columns_and_descriptions": {
+        "product_id": {"description": "Product ID", "type": "TEXT", "searchable": false, "filterable": false},
+        "product_name": {"description": "Product name", "type": "TEXT", "searchable": true, "filterable": false},
+        "product_category": {"description": "Category", "type": "TEXT", "searchable": false, "filterable": true},
+        "features": {"description": "Product features", "type": "TEXT", "searchable": true, "filterable": false},
+        "price": {"description": "Price in USD", "type": "NUMBER", "searchable": false, "filterable": true}
+      },
+      "max_results": 100,
+      "execution_environment": {"type": "warehouse", "warehouse": "HOL_WH"}
+    }
+  }
+}
+$$;
+
+ALTER AGENT BUSINESS_INSIGHTS_AGENT SET PROFILE = '{"display_name": "Business Insights", "color": "#29B5E8"}';
+
+
+================================================================================
+STEP 6: TEST AGENT IN CoWork (~10 min — Snowsight UI)
+================================================================================
+
+Navigate to AI & ML > Snowflake CoWork. Select BUSINESS_INSIGHTS_AGENT. Ask:
+
+  "Show me monthly revenue trend from August to November 2026"
+  "Which month had the lowest revenue, and what do customer reviews say about that period?"
+  "Find reviews mentioning wrong size with a rating below 3"
+  "Why are customers returning ski boots?"
+  "What is our total revenue and customer count by state?"
+  "What are the top complaint themes in support tickets?"
+  "How many reviews mention sizing issues, and which products are most affected?"
+
+TIP: The agent routes to text-to-SQL for structured data and Cortex Search
+for unstructured feedback. Questions with "why" trigger both tools.
+
+
+================================================================================
+STEP 7: DEEP RESEARCH (~5 min — Snowsight UI)
+================================================================================
+
+In CoWork, click + > Deep Research, then ask:
+
+  "What are the root causes of customer dissatisfaction? Investigate across order cancellations, product reviews, and support tickets to identify the top drivers and which products are most affected."
+
+
+================================================================================
+STEP 8: BUILD DASHBOARD (~10 min — CoCo prompt)
+================================================================================
+
+Prompt CoCo:
+
+  "Build and deploy a Streamlit in Snowflake dashboard called THE_DASHBOARD in DASH_AUTOMATED_INTELLIGENCE_DB.RAW with three pages:
+  (1) Summary -- revenue KPIs (total revenue, total orders, total customers, average order value) using RAW.ORDERS and RAW.CUSTOMERS, plus an order status donut chart and product category revenue bar chart from RAW.ORDER_ITEMS.
+  (2) Pipeline Health -- show Dynamic Tables status (SHOW DYNAMIC TABLES IN DASH_AUTOMATED_INTELLIGENCE_DB.DYNAMIC_TABLES), display scheduling_state, refresh_mode, and target_lag for each, with a green checkmark if all are ACTIVE.
+  (3) Product Analytics -- product category revenue breakdown and top 10 products by revenue using RAW.ORDER_ITEMS, plus product catalog details from RAW.PRODUCT_CATALOG.
+  Use warehouse HOL_WH. All data is in DASH_AUTOMATED_INTELLIGENCE_DB."
+
+CoCo generates the Streamlit app code and deploys it.
+
+NOTE: If CoCo asks which Streamlit deployment method to use, choose
+"Streamlit in Snowflake" (not local). The app should be created as
+DASH_AUTOMATED_INTELLIGENCE_DB.RAW.THE_DASHBOARD.
+
+
+================================================================================
+CLEANUP (when done)
+================================================================================
+
+Run this SQL to tear down all objects created during the lab:
+
+  USE ROLE ACCOUNTADMIN;
+  DROP DATABASE IF EXISTS DASH_AUTOMATED_INTELLIGENCE_DB CASCADE;
+  DROP WAREHOUSE IF EXISTS HOL_WH;
+
+
+================================================================================
+TROUBLESHOOTING FAQ
+================================================================================
+
+Q: Setup SQL timed out during data load
+A: Increase the session timeout before retrying:
+     ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 3600;
+   Then re-run only the block that failed. Blocks are idempotent (CREATE OR REPLACE / FORCE = TRUE).
+
+Q: "Insufficient privileges" or "Object does not exist or not authorized"
+A: Ensure you are running as ACCOUNTADMIN:
+     SELECT CURRENT_ROLE();
+   If not ACCOUNTADMIN, run: USE ROLE ACCOUNTADMIN;
+
+Q: DMF results are empty after Step 1
+A: SNOWFLAKE.LOCAL.DATA_QUALITY_MONITORING_RESULTS populates asynchronously
+   (up to 15 min after TRIGGER_ON_CHANGES fires). Wait and re-query, or check
+   the view directly:
+     SELECT * FROM dash_automated_intelligence_db.raw.vw_dq_monitoring_results ORDER BY measurement_time DESC LIMIT 10;
+
+Q: Dynamic Table stuck in REFRESHING or shows 0 rows
+A: Check the refresh history for errors:
+     SELECT * FROM TABLE(INFORMATION_SCHEMA.DYNAMIC_TABLE_REFRESH_HISTORY())
+     ORDER BY DATA_TIMESTAMP DESC LIMIT 10;
+   Upstream DTs must finish first (Tier 1 before Tier 2 before Tier 3).
+
+Q: Cortex Search returns no results or stale data
+A: Cortex Search indexes build asynchronously after CREATE and may take a few
+   minutes. Force a refresh:
+     ALTER CORTEX SEARCH SERVICE dash_automated_intelligence_db.raw.customer_feedback_search REFRESH;
+
+Q: Agent not appearing in CoWork (AI & ML > Snowflake CoWork)
+A: On fresh accounts, agents auto-appear. On accounts with an existing Snowflake
+   Intelligence object, register manually:
+     ALTER SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT
+       ADD AGENT DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_INSIGHTS_AGENT;
+
+Q: CoCo prompts produce SQL errors
+A: CoCo may need a retry for newer APIs. Let it self-correct.
+   If it persists, copy the SQL from this file and run directly.
