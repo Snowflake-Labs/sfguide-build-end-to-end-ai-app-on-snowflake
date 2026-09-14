@@ -321,7 +321,7 @@ UNION ALL SELECT 'orders', COUNT(*) FROM raw.orders
 UNION ALL SELECT 'order_items', COUNT(*) FROM raw.order_items
 UNION ALL SELECT 'product_reviews', COUNT(*) FROM raw.product_reviews
 UNION ALL SELECT 'support_tickets', COUNT(*) FROM raw.support_tickets;
--- Expected: ~2M customers, ~10M orders, ~25M order_items, ~1200 reviews, ~1200 tickets
+-- Expected: ~2M customers, ~10M orders, ~25M order_items, ~240 reviews, ~192 tickets
 
 
 --- PART C: Data Enrichment + Pipeline Refresh (~3 min, timeout-sensitive) ---
@@ -416,7 +416,7 @@ Prompt CoCo:
   "What's the date range of our order data?"
 
 CHECKPOINT: You should see ~10M orders, ~25M order_items, 2M customers, 10 products,
-~1200 reviews, ~1200 tickets. Dates should span August to November 2026.
+~240 reviews, ~192 tickets. Dates should span August to November 2026.
 
 
 ================================================================================
