@@ -119,9 +119,30 @@ GRANT USAGE ON AGENT DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_INSIGHTS_A
 GRANT MONITOR ON AGENT DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_INSIGHTS_AGENT TO ROLE ACCOUNTADMIN;
 
 -- Make agent visible in Snowflake CoWork
--- On fresh accounts (no SI object), agents auto-appear — no action needed.
--- If the account already has a SI object, uncomment the following:
--- ALTER SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT ADD AGENT DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_INSIGHTS_AGENT;
+-- Accounts without a CoWork (Snowflake Intelligence) object show every agent the
+-- user can access. Accounts WITH one only show agents added to it, so register
+-- the agent whenever that object exists (no-op on fresh accounts).
+EXECUTE IMMEDIATE $$
+DECLARE
+    si_name VARCHAR;
+BEGIN
+    SHOW SNOWFLAKE INTELLIGENCES;
+    SELECT MAX("name") INTO :si_name FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
+    IF (si_name IS NULL) THEN
+        RETURN 'No CoWork object in this account; agent is visible automatically.';
+    END IF;
+    EXECUTE IMMEDIATE 'ALTER SNOWFLAKE INTELLIGENCE ' || si_name ||
+        ' ADD AGENT DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_INSIGHTS_AGENT';
+    RETURN 'Agent added to CoWork object ' || si_name || '.';
+EXCEPTION
+    -- Re-running this script: the agent is already registered.
+    WHEN STATEMENT_ERROR THEN
+        IF (SQLSTATE = '23505') THEN
+            RETURN 'Agent already registered in CoWork object ' || si_name || '.';
+        END IF;
+        RAISE;
+END;
+$$;
 
 -- ============================================================================
 -- Sample Questions for the Agent

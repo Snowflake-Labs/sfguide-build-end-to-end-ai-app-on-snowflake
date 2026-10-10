@@ -286,6 +286,16 @@ WITH
     GENERATION = '2'
     COMMENT = 'Gen2 warehouse for data transformation';
 
+-- Create Gen1 warehouse (reference for comparing warehouse generations).
+-- New standard warehouses default to Gen2, so HOL_WH is Gen2 on most accounts.
+CREATE OR REPLACE WAREHOUSE hol_gen1_wh
+WITH
+    WAREHOUSE_SIZE = 'XSMALL'
+    AUTO_SUSPEND = 60
+    AUTO_RESUME = TRUE
+    GENERATION = '1'
+    COMMENT = 'Gen1 reference warehouse for comparing warehouse generations';
+
 -- Procedure: merge_staging_to_raw
 CREATE OR REPLACE PROCEDURE merge_staging_to_raw(
     return_timing BOOLEAN DEFAULT TRUE
@@ -1533,21 +1543,13 @@ GRANT SELECT ON VIEW DASH_AUTOMATED_INTELLIGENCE_DB.RAW.CUSTOMER_FEEDBACK TO ROL
 -- as WEST_COAST_MANAGER.
 GRANT SELECT ON SEMANTIC VIEW DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_ANALYTICS_SEMANTIC TO ROLE WEST_COAST_MANAGER;
 
--- Create a dedicated demo user whose DEFAULT_ROLE is WEST_COAST_MANAGER.
--- Cortex Agents run with the querying user's DEFAULT role (not the active
--- Snowsight role), so switching role in Snowsight has no effect on the agent.
--- To verify Row Access Policies through CoWork, log into Snowsight as this
--- user, then ask the Business Insights Agent — its results filter to CA, OR, WA.
--- NOTE: No password is set here (to avoid committing a secret). Before first use,
--- set a login password out-of-band, e.g. in Snowsight or via:
---   ALTER USER west_coast_manager_user SET PASSWORD = '<your-choice>';
-CREATE OR REPLACE USER west_coast_manager_user
-    DEFAULT_ROLE = WEST_COAST_MANAGER
-    DEFAULT_WAREHOUSE = HOL_WH
-    MUST_CHANGE_PASSWORD = FALSE
-    COMMENT = 'Demo user for verifying Row Access Policies through the Business Insights Agent';
-
-GRANT ROLE WEST_COAST_MANAGER TO USER west_coast_manager_user;
+-- Verifying Row Access Policies through CoWork: Cortex Agents run with the
+-- querying user's DEFAULT role (not the active Snowsight role). Instead of a
+-- separate demo user, temporarily switch your own default role:
+--   SET current_user = (SELECT CURRENT_USER());
+--   ALTER USER IDENTIFIER($current_user) SET DEFAULT_ROLE = WEST_COAST_MANAGER;
+-- Start a new CoWork chat, ask the agent, then restore:
+--   ALTER USER IDENTIFIER($current_user) SET DEFAULT_ROLE = AUTOMATED_INTELLIGENCE_ADMIN;
 
 USE DATABASE DASH_AUTOMATED_INTELLIGENCE_DB;
 USE SCHEMA RAW;
@@ -1592,6 +1594,16 @@ UNION ALL SELECT 'What are the top complaint themes in support tickets?',
        PARSE_JSON('{"ground_truth_output": "The agent should use search_customer_feedback to find and analyze support tickets. The response should identify main complaint themes with examples from actual tickets."}')
 UNION ALL SELECT 'How many reviews mention sizing issues, and which products are most affected?',
        PARSE_JSON('{"ground_truth_output": "The agent should use search_customer_feedback to find reviews mentioning sizing issues. The response should provide a count and identify which products are most frequently mentioned in sizing complaints."}');
+
+-- Register the table as an evaluation dataset so the Evaluations UI can use it
+-- directly (Existing dataset -> HOL_EVAL_DATASET). Safe to re-run: STEP 0 drops
+-- the database.
+CALL SYSTEM$CREATE_EVALUATION_DATASET(
+    'Cortex Agent',
+    'DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.AGENT_EVALUATION_DATA',
+    'DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.HOL_EVAL_DATASET',
+    OBJECT_CONSTRUCT('query_text', 'INPUT_QUERY', 'expected_tools', 'GROUND_TRUTH')
+);
 
 -- ============================================================================
 -- CROSS-ROLE READ GRANTS (run after all pipeline tables exist)
