@@ -1,7 +1,7 @@
 dataset:
   dataset_type: "CORTEX AGENT"
   table_name: "DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.AGENT_EVALUATION_DATA"
-  dataset_name: "BUSINESS_INSIGHTS_EVAL_DATASET_V2"
+  dataset_name: "BUSINESS_INSIGHTS_EVAL_DATASET"
   column_mapping:
     query_text: "INPUT_QUERY"
     ground_truth: "GROUND_TRUTH"
