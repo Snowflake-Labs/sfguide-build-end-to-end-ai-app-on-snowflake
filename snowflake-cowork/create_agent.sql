@@ -70,32 +70,33 @@ FROM SPECIFICATION $$
       "search_service": "DASH_AUTOMATED_INTELLIGENCE_DB.RAW.CUSTOMER_FEEDBACK_SEARCH",
       "database_schema": "DASH_AUTOMATED_INTELLIGENCE_DB.RAW",
       "is_multi_index": true,
+      "title_column": "TITLE",
       "columns_and_descriptions": {
-        "doc_id": {"description": "Unique document identifier (review_id or ticket_id)", "type": "TEXT", "searchable": false, "filterable": false},
-        "title": {"description": "Review title or ticket subject line", "type": "TEXT", "searchable": true, "filterable": false},
-        "content": {"description": "Full text of the review or support ticket description", "type": "TEXT", "searchable": true, "filterable": false},
-        "source_type": {"description": "Type of document: review or ticket", "type": "TEXT", "searchable": false, "filterable": true},
-        "category": {"description": "Ticket category such as Returns, Shipping, Sizing (null for reviews)", "type": "TEXT", "searchable": false, "filterable": true},
-        "rating": {"description": "Review star rating 1-5 (null for tickets)", "type": "NUMBER", "searchable": false, "filterable": true},
-        "date_field": {"description": "Date when the review was posted or ticket was created", "type": "DATE", "searchable": false, "filterable": true},
-        "customer_id": {"description": "Customer identifier", "type": "NUMBER", "searchable": false, "filterable": true}
+        "DOC_ID": {"description": "Unique document identifier (review_id or ticket_id)", "type": "TEXT", "searchable": false, "filterable": false},
+        "TITLE": {"description": "Review title or ticket subject line", "type": "TEXT", "searchable": true, "filterable": false},
+        "CONTENT": {"description": "Full text of the review or support ticket description", "type": "TEXT", "searchable": true, "filterable": false},
+        "SOURCE_TYPE": {"description": "Type of document: review or ticket", "type": "TEXT", "searchable": false, "filterable": true},
+        "CATEGORY": {"description": "Ticket category such as Returns, Shipping, Sizing (null for reviews)", "type": "TEXT", "searchable": false, "filterable": true},
+        "RATING": {"description": "Review star rating 1-5 (null for tickets)", "type": "NUMBER", "searchable": false, "filterable": true},
+        "DATE_FIELD": {"description": "Date when the review was posted or ticket was created", "type": "DATE", "searchable": false, "filterable": true},
+        "CUSTOMER_ID": {"description": "Customer identifier", "type": "NUMBER", "searchable": false, "filterable": true}
       },
       "max_results": 1000,
       "execution_environment": {"type": "warehouse", "warehouse": "HOL_WH"},
       "id_column": "DOC_ID",
       "base_table": "DASH_AUTOMATED_INTELLIGENCE_DB.RAW.CUSTOMER_FEEDBACK",
-      "base_table_columns": ["doc_id", "title", "content", "source_type", "category", "rating", "date_field", "customer_id"]
+      "base_table_columns": ["DOC_ID", "TITLE", "CONTENT", "SOURCE_TYPE", "CATEGORY", "RATING", "DATE_FIELD", "CUSTOMER_ID"]
     },
     "search_products": {
       "search_service": "DASH_AUTOMATED_INTELLIGENCE_DB.RAW.PRODUCT_SEARCH_SERVICE",
       "id_column": "PRODUCT_ID",
       "title_column": "PRODUCT_NAME",
       "columns_and_descriptions": {
-        "product_id": {"description": "Unique product identifier", "type": "TEXT", "searchable": false, "filterable": false},
-        "product_name": {"description": "Product name", "type": "TEXT", "searchable": true, "filterable": false},
-        "product_category": {"description": "Product category such as Skis, Boots, Accessories", "type": "TEXT", "searchable": false, "filterable": true},
-        "features": {"description": "Product features and specifications", "type": "TEXT", "searchable": true, "filterable": false},
-        "price": {"description": "Product price in USD", "type": "NUMBER", "searchable": false, "filterable": true}
+        "PRODUCT_ID": {"description": "Unique product identifier", "type": "TEXT", "searchable": false, "filterable": false},
+        "PRODUCT_NAME": {"description": "Product name", "type": "TEXT", "searchable": true, "filterable": false},
+        "PRODUCT_CATEGORY": {"description": "Product category such as Skis, Boots, Accessories", "type": "TEXT", "searchable": false, "filterable": true},
+        "FEATURES": {"description": "Product features and specifications", "type": "TEXT", "searchable": true, "filterable": false},
+        "PRICE": {"description": "Product price in USD", "type": "NUMBER", "searchable": false, "filterable": true}
       },
       "max_results": 100,
       "execution_environment": {"type": "warehouse", "warehouse": "HOL_WH"}

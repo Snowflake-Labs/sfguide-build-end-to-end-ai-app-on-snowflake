@@ -1,7 +1,7 @@
 dataset:
   dataset_type: "CORTEX AGENT"
   table_name: "DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.AGENT_EVALUATION_DATA"
-  dataset_name: "BUSINESS_INSIGHTS_EVAL_DATASET"
+  dataset_name: "BUSINESS_INSIGHTS_EVAL_DATASET_V2"
   column_mapping:
     query_text: "INPUT_QUERY"
     ground_truth: "GROUND_TRUTH"
@@ -15,8 +15,64 @@ evaluation:
     description: "Evaluate Business Insights Agent with answer correctness and logical consistency"
   source_metadata:
     type: "dataset"
-    dataset_name: "BUSINESS_INSIGHTS_EVAL_DATASET"
+    dataset_name: "BUSINESS_INSIGHTS_EVAL_DATASET_V2"
 
 metrics:
-  - "answer_correctness"
-  - "logical_consistency"
+  - name: "answer_correctness"
+    version: "v3"
+  - name: "logical_consistency"
+    version: "v3"
+
+#custom metrics
+
+  # Execution Efficiency metric - TruLens Agent GPA based evaluation
+  # Evaluates how optimally the agent uses its available tools to accomplish the user''s goal
+  - name: execution_efficiency
+    model: "claude-sonnet-4-6"
+    score_ranges:
+      min_score: [0, 0.33]
+      median_score: [0.34, 0.66]
+      max_score: [0.67, 1]
+    prompt: |
+      You are evaluating the execution efficiency of an AI agent that analyzes marketing
+      campaigns. Execution efficiency measures how optimally the agent uses its available
+      tools to accomplish the user''s goal.
+
+      The agent has access to three tools:
+      1. query_performance_metrics - For quantitative analysis (revenue, ROI, conversions, etc.)
+      2. search_campaign_content - For qualitative insights (descriptions, feedback, A/B tests)
+      3. generate_campaign_report - For creating comprehensive HTML reports
+
+      Analyze the complete agent execution trace provided as context, including:
+      - Execution duration: {{duration}} milliseconds
+      - Tool calls made and their sequence
+      - Any errors encountered: {{error}}
+      - Execution status: {{status}}
+
+      Here are a few examples of execution efficiency scores:
+
+      0 (Inefficient):
+        - Excessive or redundant tool calls relative to query complexity
+        - Repeated broad searches when one or two focused retrievals would suffice
+        - Multiple avoidable retries, loops, or backtracking steps
+        - Very long execution duration without proportional complexity
+        - Unnecessary tool chains for capability/meta questions
+
+      0.5 (Moderately Efficient):
+        - Reasonable path but with one notable inefficiency
+        - Slightly more calls than necessary, or avoidable duplicate retrieval
+        - Mostly direct flow with minor backtracking
+
+      1 (Highly Efficient):
+        - Minimal sensible path from request to answer
+        - Tool sequence is concise and dependency-aware
+        - No redundant retrievals or unnecessary calls
+        - Execution time is appropriate for task complexity
+
+      Consider:
+      - For report requests, was the flow efficient (identify campaign if needed ->
+        generate report -> optional concise support fetch)?
+      - For vague comparison questions, did the agent avoid repeated unfocused searches?
+      - For capability/meta queries, did it avoid unnecessary tool execution?
+      - Could the same result have been achieved with fewer calls or a tighter sequence?
+      - Focus on path efficiency and redundancy, not factual claim support.
