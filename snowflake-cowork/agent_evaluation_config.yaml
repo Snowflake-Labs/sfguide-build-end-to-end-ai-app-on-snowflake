@@ -15,7 +15,7 @@ evaluation:
     description: "Evaluate Business Insights Agent with answer correctness and logical consistency"
   source_metadata:
     type: "dataset"
-    dataset_name: "BUSINESS_INSIGHTS_EVAL_DATASET_V2"
+    dataset_name: "BUSINESS_INSIGHTS_EVAL_DATASET"
 
 metrics:
   - name: "answer_correctness"
