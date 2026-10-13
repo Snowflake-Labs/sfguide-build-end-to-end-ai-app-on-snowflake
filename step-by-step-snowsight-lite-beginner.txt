@@ -14,6 +14,8 @@ WHAT YOU'LL BUILD:
 
 PREREQUISITES
 -------------
+  [ ] Access to a Snowflake account -- or a trial (Enterprise edition, AWS US West 2 /
+      US East 1) so Cortex AI, CoWork, and Interactive Tables are available
   [ ] ACCOUNTADMIN role access on your Snowflake account
   [ ] Cortex AI functions enabled (default on most accounts)
   [ ] Snowflake CoCo access via Snowsight Workspaces, CLI, or Desktop
@@ -528,12 +530,42 @@ $$;
 
 ALTER AGENT BUSINESS_INSIGHTS_AGENT SET PROFILE = '{"display_name": "Business Insights", "color": "#29B5E8"}';
 
+-- Make the agent visible in CoWork. Accounts with a CoWork (Snowflake Intelligence)
+-- object only show agents added to it; this block adds it when that object exists
+-- and does nothing on accounts without one.
+EXECUTE IMMEDIATE $$
+DECLARE
+    si_name VARCHAR;
+BEGIN
+    SHOW SNOWFLAKE INTELLIGENCES;
+    SELECT MAX("name") INTO :si_name FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
+    IF (si_name IS NULL) THEN
+        RETURN 'No CoWork object in this account; agent is visible automatically.';
+    END IF;
+    EXECUTE IMMEDIATE 'ALTER SNOWFLAKE INTELLIGENCE ' || si_name ||
+        ' ADD AGENT DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_INSIGHTS_AGENT';
+    RETURN 'Agent added to CoWork object ' || si_name || '.';
+EXCEPTION
+    -- Re-running this step: the agent is already registered.
+    WHEN STATEMENT_ERROR THEN
+        IF (SQLSTATE = '23505') THEN
+            RETURN 'Agent already registered in CoWork object ' || si_name || '.';
+        END IF;
+        RAISE;
+END;
+$$;
+
+NOTE: A new agent can take a minute or two to show up in CoWork. If it's not
+listed yet, wait and refresh the page.
+
 
 ================================================================================
 STEP 6: TEST AGENT IN CoWork (~10 min — Snowsight UI)
 ================================================================================
 
-Navigate to AI & ML > Snowflake CoWork. Select BUSINESS_INSIGHTS_AGENT. Ask:
+Open CoWork at https://ai.snowflake.com (or in Snowsight: AI & ML > Agents >
+BUSINESS_INSIGHTS_AGENT > Preview in Snowflake CoWork). Select
+BUSINESS_INSIGHTS_AGENT. Ask:
 
   "Show me monthly revenue trend from August to November 2026"
   "Which month had the lowest revenue, and what do customer reviews say about that period?"
@@ -548,12 +580,15 @@ for unstructured feedback. Questions with "why" trigger both tools.
 
 
 ================================================================================
-STEP 7: DEEP RESEARCH (~5 min — Snowsight UI)
+STEP 7: DEEP RESEARCH (~5 min hands-on — Snowsight UI)
 ================================================================================
 
 In CoWork, click + > Deep Research, then ask:
 
   "What are the root causes of customer dissatisfaction? Investigate across order cancellations, product reviews, and support tickets to identify the top drivers and which products are most affected."
+
+NOTE: Deep Research can take 10+ minutes to finish. Start it, move on to Step 8,
+and come back to read the report when it's done.
 
 
 ================================================================================
@@ -574,6 +609,9 @@ NOTE: If CoCo asks which Streamlit deployment method to use, choose
 "Streamlit in Snowflake" (not local). The app should be created as
 DASH_AUTOMATED_INTELLIGENCE_DB.RAW.THE_DASHBOARD.
 
+NOTE: Deployment can take more than one attempt. If it fails, ask CoCo to check
+the error and retry the deploy.
+
 
 ================================================================================
 CLEANUP (when done)
@@ -582,6 +620,26 @@ CLEANUP (when done)
 Run this SQL to tear down all objects created during the lab:
 
   USE ROLE ACCOUNTADMIN;
+
+  -- Remove the agent from CoWork first (no-op if the account has no CoWork object)
+  EXECUTE IMMEDIATE $$
+  DECLARE
+      si_name VARCHAR;
+  BEGIN
+      SHOW SNOWFLAKE INTELLIGENCES;
+      SELECT MAX("name") INTO :si_name FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
+      IF (si_name IS NULL) THEN
+          RETURN 'No CoWork object; nothing to deregister.';
+      END IF;
+      EXECUTE IMMEDIATE 'ALTER SNOWFLAKE INTELLIGENCE ' || si_name ||
+          ' DROP AGENT DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_INSIGHTS_AGENT';
+      RETURN 'Agent removed from CoWork object ' || si_name || '.';
+  EXCEPTION
+      WHEN OTHER THEN
+          RETURN 'Agent was not registered in CoWork; nothing to remove.';
+  END;
+  $$;
+
   DROP DATABASE IF EXISTS DASH_AUTOMATED_INTELLIGENCE_DB CASCADE;
   DROP WAREHOUSE IF EXISTS HOL_WH;
 
@@ -617,11 +675,11 @@ A: Cortex Search indexes build asynchronously after CREATE and may take a few
    minutes. Force a refresh:
      ALTER CORTEX SEARCH SERVICE dash_automated_intelligence_db.raw.customer_feedback_search REFRESH;
 
-Q: Agent not appearing in CoWork (AI & ML > Snowflake CoWork)
-A: On fresh accounts, agents auto-appear. On accounts with an existing Snowflake
-   Intelligence object, register manually:
-     ALTER SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT
-       ADD AGENT DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_INSIGHTS_AGENT;
+Q: Agent not appearing in CoWork
+A: Step 5 registers the agent with the account's CoWork object automatically.
+   A new agent can take a minute or two to appear; refresh the page. If it's
+   still missing, confirm the registration ran and re-run the Step 5 block:
+     SHOW SNOWFLAKE INTELLIGENCES;
 
 Q: CoCo prompts produce SQL errors
 A: CoCo may need a retry for newer APIs. Let it self-correct.

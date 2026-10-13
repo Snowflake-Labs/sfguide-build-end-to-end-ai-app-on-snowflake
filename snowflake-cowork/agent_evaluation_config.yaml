@@ -1,11 +1,5 @@
-dataset:
-  dataset_type: "CORTEX AGENT"
-  table_name: "DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.AGENT_EVALUATION_DATA"
-  dataset_name: "BUSINESS_INSIGHTS_EVAL_DATASET"
-  column_mapping:
-    query_text: "INPUT_QUERY"
-    ground_truth: "GROUND_TRUTH"
-
+# Uses the HOL_EVAL_DATASET dataset created by setup.sql (no dataset: block, so
+# repeated runs don't try to re-create it).
 evaluation:
   agent_params:
     agent_name: "DASH_AUTOMATED_INTELLIGENCE_DB.SEMANTIC.BUSINESS_INSIGHTS_AGENT"
@@ -15,8 +9,12 @@ evaluation:
     description: "Evaluate Business Insights Agent with answer correctness and logical consistency"
   source_metadata:
     type: "dataset"
-    dataset_name: "BUSINESS_INSIGHTS_EVAL_DATASET"
+    dataset_name: "HOL_EVAL_DATASET"
 
+# Pin v3: the v1 default judge (claude-4-sonnet) is legacy as of Aug 12, 2026,
+# so accounts with no prior usage of it can't run unversioned metrics.
 metrics:
-  - "answer_correctness"
-  - "logical_consistency"
+  - name: "answer_correctness"
+    version: "v3"
+  - name: "logical_consistency"
+    version: "v3"
