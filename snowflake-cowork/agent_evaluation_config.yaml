@@ -12,7 +12,7 @@ evaluation:
     agent_type: "CORTEX AGENT"
   run_params:
     label: "HOL Agent Evaluation"
-    description: "Evaluate Business Insights Agent with answer correctness and logical consistency"
+    description: "Evaluate Business Insights Agent with answer correctness, logical consistency and execution efficiency"
   source_metadata:
     type: "dataset"
     dataset_name: "BUSINESS_INSIGHTS_EVAL_DATASET"
@@ -26,7 +26,7 @@ metrics:
 #custom metrics
 
   # Execution Efficiency metric - TruLens Agent GPA based evaluation
-  # Evaluates how optimally the agent uses its available tools to accomplish the user''s goal
+  # Evaluates how optimally the agent uses its available tools to accomplish the user's goal
   - name: execution_efficiency
     model: "claude-sonnet-4-6"
     score_ranges:
