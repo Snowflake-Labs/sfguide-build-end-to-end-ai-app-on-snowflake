@@ -38,11 +38,6 @@ metrics:
       campaigns. Execution efficiency measures how optimally the agent uses its available
       tools to accomplish the user''s goal.
 
-      The agent has access to three tools:
-      1. query_performance_metrics - For quantitative analysis (revenue, ROI, conversions, etc.)
-      2. search_campaign_content - For qualitative insights (descriptions, feedback, A/B tests)
-      3. generate_campaign_report - For creating comprehensive HTML reports
-
       Analyze the complete agent execution trace provided as context, including:
       - Execution duration: {{duration}} milliseconds
       - Tool calls made and their sequence
@@ -70,9 +65,7 @@ metrics:
         - Execution time is appropriate for task complexity
 
       Consider:
-      - For report requests, was the flow efficient (identify campaign if needed ->
-        generate report -> optional concise support fetch)?
-      - For vague comparison questions, did the agent avoid repeated unfocused searches?
       - For capability/meta queries, did it avoid unnecessary tool execution?
       - Could the same result have been achieved with fewer calls or a tighter sequence?
       - Focus on path efficiency and redundancy, not factual claim support.
+
