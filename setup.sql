@@ -989,9 +989,9 @@ FROM support_tickets;
 
 -- Multi-index Cortex Search for Agentic Search (reviews + tickets combined)
 CREATE OR REPLACE CORTEX SEARCH SERVICE customer_feedback_search
-  TEXT INDEXES title, doc_id
+  TEXT INDEXES title
   VECTOR INDEXES content (model = 'snowflake-arctic-embed-l-v2.0')
-  ATTRIBUTES source_type, category, rating, date_field, customer_id
+  ATTRIBUTES doc_id, source_type, category, rating, date_field, customer_id
   WAREHOUSE = hol_wh
   TARGET_LAG = '1 hour'
 AS (
