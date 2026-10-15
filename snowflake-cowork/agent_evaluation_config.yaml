@@ -30,9 +30,9 @@ metrics:
       median_score: [0.34, 0.66]
       max_score: [0.67, 1]
     prompt: |
-      You are evaluating the execution efficiency of an AI agent that analyzes marketing
-      campaigns. Execution efficiency measures how optimally the agent uses its available
-      tools to accomplish the user''s goal.
+      You are evaluating the execution efficiency of an AI agent that answers retail
+      business questions about orders, products, and customer feedback. Execution efficiency
+      measures how optimally the agent uses its available tools to accomplish the user's goal.
 
       Analyze the complete agent execution trace provided as context, including:
       - Execution duration: {{duration}} milliseconds
