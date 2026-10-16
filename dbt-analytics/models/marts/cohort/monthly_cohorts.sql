@@ -16,7 +16,7 @@ orders as (
         order_month,
         total_amount
     from {{ ref('stg_orders') }}
-    where order_status in ('completed', 'shipped', 'delivered')
+    where lower(order_status) in ('completed', 'shipped', 'delivered')
 ),
 
 -- Define cohorts by signup month
