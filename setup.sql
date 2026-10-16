@@ -1345,6 +1345,33 @@ CROSS JOIN TABLE(GENERATOR(ROWCOUNT => 5)) g
 WHERE c.customer_segment = 'Standard'
   AND c.customer_id BETWEEN 100001 AND 300000;
 
+-- Give the injected orders line items (1-3 catalog products each, price within +/-10% of list)
+-- so they flow through the item-based pipeline (fact_orders, daily metrics, product analytics).
+INSERT INTO dash_automated_intelligence_db.raw.order_items
+    (order_item_id, order_id, product_id, product_name, product_category, quantity, unit_price, line_total)
+WITH catalog (product_id, product_name, product_category, list_price, slot) AS (
+    SELECT * FROM VALUES
+        (1001, 'Powder Skis', 'Skis', 799.99, 1), (1002, 'All-Mountain Skis', 'Skis', 649.99, 2),
+        (1003, 'Freestyle Snowboard', 'Snowboards', 549.99, 3), (1004, 'Freeride Snowboard', 'Snowboards', 699.99, 4),
+        (1005, 'Ski Boots', 'Boots', 449.99, 5), (1006, 'Snowboard Boots', 'Boots', 349.99, 6),
+        (1007, 'Ski Poles', 'Accessories', 79.99, 7), (1008, 'Ski Goggles', 'Accessories', 149.99, 8),
+        (1009, 'Snowboard Bindings', 'Accessories', 249.99, 9), (1010, 'Ski Helmet', 'Accessories', 179.99, 10)
+),
+orphans AS (
+    SELECT o.order_id, UNIFORM(1, 3, RANDOM()) AS n_items
+    FROM dash_automated_intelligence_db.raw.orders o
+    WHERE NOT EXISTS (SELECT 1 FROM dash_automated_intelligence_db.raw.order_items i WHERE i.order_id = o.order_id)
+),
+lines AS (
+    SELECT o.order_id, UNIFORM(1, 10, RANDOM()) AS slot, UNIFORM(90, 110, RANDOM()) / 100 AS price_factor
+    FROM orphans o
+    JOIN (SELECT SEQ4() + 1 AS line_no FROM TABLE(GENERATOR(ROWCOUNT => 3))) g ON g.line_no <= o.n_items
+)
+SELECT UUID_STRING(), l.order_id, c.product_id, c.product_name, c.product_category, 1,
+       ROUND(c.list_price * l.price_factor, 2), ROUND(c.list_price * l.price_factor, 2)
+FROM lines l
+JOIN catalog c ON c.slot = l.slot;
+
 -- At-risk: cancel most orders for 2000 Basic customers
 UPDATE dash_automated_intelligence_db.raw.orders
 SET order_status = 'Cancelled'
